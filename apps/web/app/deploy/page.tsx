@@ -1,7 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
-import { PixelCard } from "@/components/ui/PixelCard";
 
 interface DeployResponse {
   agentId?: string;
@@ -26,7 +25,6 @@ export default function DeployPage() {
     walletAddress: "",
     anthropicApiKey: "",
     strategy: "BALANCED",
-    maxEthSpend: "0.01",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +40,10 @@ export default function DeployPage() {
     }
   }, [terminalLines]);
 
+  useEffect(() => {
+    return () => { eventSourceRef.current?.close(); };
+  }, []);
+
   function validate(): boolean {
     const errs: Record<string, string> = {};
     if (!/^[A-Z0-9_]{1,16}$/.test(form.name)) {
@@ -52,10 +54,6 @@ export default function DeployPage() {
     }
     if (!form.anthropicApiKey.startsWith("sk-ant-")) {
       errs.anthropicApiKey = "Must start with sk-ant-";
-    }
-    const spend = parseFloat(form.maxEthSpend);
-    if (isNaN(spend) || spend <= 0) {
-      errs.maxEthSpend = "Must be a positive number";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -68,6 +66,9 @@ export default function DeployPage() {
     setDeployError(null);
     setTerminalLines([{ text: "Deploying agent...", cls: "thought" }]);
 
+    // Close any previous stream
+    eventSourceRef.current?.close();
+
     try {
       const res = await fetch("/api/agent/deploy", {
         method: "POST",
@@ -77,7 +78,7 @@ export default function DeployPage() {
           walletAddress: form.walletAddress,
           anthropicApiKey: form.anthropicApiKey,
           strategy: form.strategy,
-          maxEthSpend: parseFloat(form.maxEthSpend),
+          maxEthSpend: 0, // free to play — no spend limit
         }),
       });
 
@@ -90,56 +91,72 @@ export default function DeployPage() {
       }
 
       setDeployed({ agentId: data.agentId!, spawnPosition: data.spawnPosition! });
-      addTerminalLine(`Agent ${data.agentId} deployed at (${data.spawnPosition?.x}, ${data.spawnPosition?.y})`, "");
-      addTerminalLine(`Starting agent loop...`, "thought");
+      addLine(`Agent ${data.agentId} deployed at (${data.spawnPosition?.x}, ${data.spawnPosition?.y})`, "");
+      addLine(`Starting agent loop...`, "thought");
 
       // Connect to SSE stream
-      const es = new EventSource(data.streamUrl!);
+      const streamUrl = data.streamUrl!;
+      // Check the stream URL is a relative path (not HTML page)
+      if (!streamUrl.startsWith("/api/")) {
+        addLine("Agent is running. Check /game to watch live.", "thought");
+        setSubmitting(false);
+        return;
+      }
+
+      const es = new EventSource(streamUrl);
       eventSourceRef.current = es;
+
+      es.onopen = () => {
+        addLine("Connected. Agent running.", "thought");
+        setSubmitting(false);
+      };
 
       es.onmessage = (e) => {
         try {
+          // Guard: must be JSON, not HTML
+          if (!e.data || e.data.trim().startsWith("<")) return;
           const event: AgentEvent = JSON.parse(e.data);
           if (event.type === "connected") {
-            addTerminalLine(`Connected. Agent running.`, "thought");
+            addLine("Connected. Agent running.", "thought");
           } else if (event.type === "action") {
             const input = event.input ? ` ${JSON.stringify(event.input)}` : "";
-            addTerminalLine(`> ${event.tool}${input}`, "");
+            addLine(`> ${event.tool}${input}`, "");
             if (event.result) {
               const r = event.result as Record<string, unknown>;
               if (r.result === "ore") {
-                addTerminalLine(`  ORE FOUND — ${r.amount} ETH claimed`, "ore");
+                addLine(`  ⛏ ORE FOUND — ${r.amount} ETH claimed`, "ore");
               } else if (r.error) {
-                addTerminalLine(`  error: ${r.error}`, "error");
+                addLine(`  error: ${r.error}`, "error");
               } else {
-                addTerminalLine(`  ${JSON.stringify(event.result)}`, "thought");
+                addLine(`  ${JSON.stringify(event.result)}`, "thought");
               }
             }
           } else if (event.type === "thought") {
-            addTerminalLine(`# ${event.message}`, "thought");
+            addLine(`# ${event.message}`, "thought");
           } else if (event.type === "error") {
-            addTerminalLine(`ERROR: ${event.message}`, "error");
+            addLine(`ERROR: ${event.message}`, "error");
+            es.close();
           }
         } catch {}
       };
 
-      es.onerror = () => {
-        addTerminalLine("Stream disconnected from agent", "error");
+      es.onerror = (e) => {
+        // Only show disconnect if we were previously connected
+        if (es.readyState === EventSource.CLOSED) {
+          addLine("Agent stream ended.", "thought");
+        }
+        setSubmitting(false);
       };
 
     } catch (err) {
       setDeployError("Request failed: " + (err as Error).message);
-    } finally {
       setSubmitting(false);
     }
   }
 
-  function addTerminalLine(text: string, cls: string) {
+  function addLine(text: string, cls: string) {
     setTerminalLines(prev => [...prev, { text, cls }].slice(-500));
   }
-
-  // Suppress unused import warning
-  void PixelCard;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -156,8 +173,11 @@ export default function DeployPage() {
           <h1 className="game-label" style={{ fontSize: "14px", marginBottom: "8px", color: "var(--ore-500)" }}>
             DEPLOY AGENT
           </h1>
-          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "40px" }}>
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
             Configure your autonomous mining agent.
+          </p>
+          <p style={{ fontSize: "11px", color: "var(--ore-500)", marginBottom: "32px", fontFamily: "monospace" }}>
+            ✦ Free to play — no ETH required to deploy.
           </p>
 
           {deployError && (
@@ -198,6 +218,9 @@ export default function DeployPage() {
                 placeholder="0x..."
                 autoComplete="off"
               />
+              <span style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4, display: "block" }}>
+                ETH rewards are sent directly to this address on Base.
+              </span>
               {errors.walletAddress && <span style={{ fontSize: "11px", color: "var(--wars-500)", marginTop: 4, display: "block" }}>{errors.walletAddress}</span>}
             </div>
 
@@ -211,6 +234,9 @@ export default function DeployPage() {
                 placeholder="sk-ant-..."
                 autoComplete="off"
               />
+              <span style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4, display: "block" }}>
+                Used to power your agent&apos;s AI. Never stored — used in-memory only.
+              </span>
               {errors.anthropicApiKey && <span style={{ fontSize: "11px", color: "var(--wars-500)", marginTop: 4, display: "block" }}>{errors.anthropicApiKey}</span>}
             </div>
 
@@ -225,19 +251,6 @@ export default function DeployPage() {
                 <option value="BALANCED">BALANCED — mixed coverage</option>
                 <option value="CONSERVATIVE">CONSERVATIVE — edge scanning, low risk</option>
               </select>
-            </div>
-
-            <div>
-              <label htmlFor="maxspend">MAX ETH SPEND</label>
-              <input
-                id="maxspend"
-                type="number"
-                step="0.001"
-                min="0.001"
-                value={form.maxEthSpend}
-                onChange={e => setForm(p => ({ ...p, maxEthSpend: e.target.value }))}
-              />
-              {errors.maxEthSpend && <span style={{ fontSize: "11px", color: "var(--wars-500)", marginTop: 4, display: "block" }}>{errors.maxEthSpend}</span>}
             </div>
 
             <button type="submit" className="pixel-btn" disabled={submitting} style={{ marginTop: "8px" }}>
@@ -261,7 +274,7 @@ export default function DeployPage() {
           {deployed && (
             <div style={{ marginTop: "16px", fontSize: "12px", color: "var(--text-muted)" }}>
               Agent <span style={{ color: "var(--agent-500)" }}>{deployed.agentId}</span> running at ({deployed.spawnPosition.x}, {deployed.spawnPosition.y}).{" "}
-              <a href="/game" style={{ color: "var(--ore-500)" }}>Watch on game page</a>
+              <a href="/game" style={{ color: "var(--ore-500)" }}>Watch on game page →</a>
             </div>
           )}
         </div>
@@ -269,17 +282,9 @@ export default function DeployPage() {
 
       <style>{`
         @media (max-width: 768px) {
-          .deploy-layout {
-            grid-template-columns: 1fr !important;
-          }
-          .deploy-form {
-            padding: 32px 24px !important;
-            border-right: none !important;
-            border-bottom: 1px solid var(--border-subtle);
-          }
-          .deploy-terminal {
-            padding: 32px 24px !important;
-          }
+          .deploy-layout { grid-template-columns: 1fr !important; }
+          .deploy-form { padding: 32px 24px !important; border-right: none !important; border-bottom: 1px solid var(--border-subtle); }
+          .deploy-terminal { padding: 32px 24px !important; }
         }
       `}</style>
     </div>
