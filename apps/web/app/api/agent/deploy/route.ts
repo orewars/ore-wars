@@ -115,11 +115,11 @@ export async function POST(req: NextRequest) {
   if (!global._agentStore) global._agentStore = new Map();
   global._agentStore.set(agentId, {
     agentId,
-    name,
-    walletAddress,
-    anthropicApiKey,
-    strategy,
-    maxEthSpend,
+    name: name!,
+    walletAddress: walletAddress!,
+    anthropicApiKey: anthropicApiKey!,
+    strategy: strategy!,
+    maxEthSpend: maxEthSpend!,
   });
 
   const streamUrl = `/api/agent/${agentId}/stream`;
