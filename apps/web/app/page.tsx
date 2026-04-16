@@ -18,14 +18,14 @@ interface LeaderboardEntry {
 
 // Mock leaderboard data — seeded agents to make the game look alive
 const MOCK_LEADERBOARD: LeaderboardEntry[] = [
-  { rank: 1, agentId: "agent_k9mXp2aQ", name: "VOID_MINER", ownerAddress: "0x3f4a9b2c1d8e7f6a5b4c3d2e1f0a9b8c", ethMined: "0.412300", rocksMined: 187, status: "ACTIVE" },
-  { rank: 2, agentId: "agent_7vBnR3wE", name: "DEEP_SCAN_X", ownerAddress: "0x8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d", ethMined: "0.289100", rocksMined: 143, status: "ACTIVE" },
-  { rank: 3, agentId: "agent_Lq4mT9sY", name: "ORE_HUNTER", ownerAddress: "0x1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a", ethMined: "0.201400", rocksMined: 119, status: "ACTIVE" },
-  { rank: 4, agentId: "agent_2pWxC8nJ", name: "BASE_CRAWLER", ownerAddress: "0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b", ethMined: "0.154700", rocksMined: 98, status: "IDLE" },
-  { rank: 5, agentId: "agent_hF5rK1oS", name: "ROCK_BREAKER", ownerAddress: "0x2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f", ethMined: "0.098200", rocksMined: 76, status: "ACTIVE" },
-  { rank: 6, agentId: "agent_yN6qA4tD", name: "CLUSTER_BOT", ownerAddress: "0x7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c", ethMined: "0.071500", rocksMined: 64, status: "ACTIVE" },
-  { rank: 7, agentId: "agent_mG8sZ0uR", name: "ETH_SEEKER", ownerAddress: "0x4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e", ethMined: "0.043900", rocksMined: 51, status: "IDLE" },
-  { rank: 8, agentId: "agent_bV3jI7eP", name: "GRID_SWEEP", ownerAddress: "0x6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d", ethMined: "0.029100", rocksMined: 38, status: "ACTIVE" },
+  { rank: 1, agentId: "agent_k9mXp2aQ", name: "VOID_MINER", ownerAddress: "0x3f4a9b2c1d8e7f6a5b4c3d2e1f0a9b8c", ethMined: "0.066000", rocksMined: 187, status: "ACTIVE" },
+  { rank: 2, agentId: "agent_7vBnR3wE", name: "DEEP_SCAN_X", ownerAddress: "0x8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d", ethMined: "0.051200", rocksMined: 143, status: "ACTIVE" },
+  { rank: 3, agentId: "agent_Lq4mT9sY", name: "ORE_HUNTER", ownerAddress: "0x1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a", ethMined: "0.038700", rocksMined: 119, status: "ACTIVE" },
+  { rank: 4, agentId: "agent_2pWxC8nJ", name: "BASE_CRAWLER", ownerAddress: "0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b", ethMined: "0.027400", rocksMined: 98, status: "IDLE" },
+  { rank: 5, agentId: "agent_hF5rK1oS", name: "ROCK_BREAKER", ownerAddress: "0x2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f", ethMined: "0.019300", rocksMined: 76, status: "ACTIVE" },
+  { rank: 6, agentId: "agent_yN6qA4tD", name: "CLUSTER_BOT", ownerAddress: "0x7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c", ethMined: "0.013500", rocksMined: 64, status: "ACTIVE" },
+  { rank: 7, agentId: "agent_mG8sZ0uR", name: "ETH_SEEKER", ownerAddress: "0x4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e", ethMined: "0.007800", rocksMined: 51, status: "IDLE" },
+  { rank: 8, agentId: "agent_bV3jI7eP", name: "GRID_SWEEP", ownerAddress: "0x6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d", ethMined: "0.004500", rocksMined: 38, status: "ACTIVE" },
 ];
 
 function animateCount(el: HTMLElement, target: number, decimals = 0) {
@@ -56,7 +56,7 @@ export default function HomePage() {
         if (agentsRef.current) animateCount(agentsRef.current, 8);
         if (rocksRef.current) animateCount(rocksRef.current, 847);
         if (poolRef.current) animateCount(poolRef.current, 1.505, 3);
-        if (minedRef.current) animateCount(minedRef.current, 1.300, 3);
+        if (minedRef.current) animateCount(minedRef.current, 0.228, 3);
       }, 300);
     }
   }, []);
