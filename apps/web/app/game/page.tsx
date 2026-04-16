@@ -311,19 +311,19 @@ export default function GamePage() {
         }
       }
 
-      // Regen every ~80s
-      if (tick % 230 === 0) {
-        let regen = 0;
-        for (let yy = 0; yy < SIZE && regen < 8; yy++) {
-          for (let xx = 0; xx < SIZE && regen < 8; xx++) {
-            if (map[yy][xx].type === "mined" && Math.random() < 0.04) {
-              const isOre = Math.random() < 0.01;
-              map[yy][xx] = { type: "rock", hasOre: isOre, oreAmount: isOre ? Math.min(0.00005 + Math.random() * 0.00045, 0.0005) : 0 };
-              regen++;
-            }
-          }
+      // Regen 1 rock every 5s (~14 ticks at 350ms/tick)
+      if (tick % 14 === 0) {
+        // Pick a random mined tile and restore it
+        const minedTiles: [number, number][] = [];
+        for (let yy = 0; yy < SIZE; yy++)
+          for (let xx = 0; xx < SIZE; xx++)
+            if (map[yy][xx].type === "mined") minedTiles.push([yy, xx]);
+
+        if (minedTiles.length > 0) {
+          const [ry, rx] = minedTiles[Math.floor(Math.random() * minedTiles.length)];
+          const isOre = Math.random() < 0.01;
+          map[ry][rx] = { type: "rock", hasOre: isOre, oreAmount: isOre ? Math.min(0.00005 + Math.random() * 0.00045, 0.0005) : 0 };
         }
-        if (regen > 0) pushLog({ time: formatTime(Date.now()), text: `Map regen — ${regen} new rocks`, isOre: false });
       }
 
       draw();

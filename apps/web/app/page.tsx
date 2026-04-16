@@ -41,24 +41,84 @@ function animateCount(el: HTMLElement, target: number, decimals = 0) {
   requestAnimationFrame(update);
 }
 
+// Read live game stats from localStorage (written by game page sim)
+function readGameStats(): { agents: number; rocks: number; mined: number } {
+  try {
+    const map = JSON.parse(localStorage.getItem("orewars_map_v1") || "null");
+    const realAgents = JSON.parse(localStorage.getItem("orewars_real_agents") || "[]");
+    const mockAgents = JSON.parse(localStorage.getItem("orewars_mock_agents_v2") || "null");
+
+    // Count rocks remaining from map
+    let rocks = 0;
+    if (map) {
+      for (const row of map) for (const tile of row) if (tile.type === "rock") rocks++;
+    } else {
+      rocks = 847;
+    }
+
+    // Active agents: 8 mock + real agents count
+    const realCount = Array.isArray(realAgents) ? realAgents.filter((a: {deployedAt?: number}) =>
+      !a.deployedAt || Date.now() - a.deployedAt < 24 * 60 * 60 * 1000
+    ).length : 0;
+    const agents = 8 + realCount;
+
+    // Total ETH mined from mock agents + real agents
+    let mined = 0;
+    if (Array.isArray(mockAgents)) {
+      for (const a of mockAgents) mined += a.ethMined ?? 0;
+    } else {
+      mined = 0.228; // fallback baseline
+    }
+    if (Array.isArray(realAgents)) {
+      for (const a of realAgents) mined += a.ethMined ?? 0;
+    }
+
+    return { agents, rocks, mined };
+  } catch {
+    return { agents: 8, rocks: 847, mined: 0.228 };
+  }
+}
+
 export default function HomePage() {
   const [leaderboard] = useState<LeaderboardEntry[]>(MOCK_LEADERBOARD);
   const agentsRef = useRef<HTMLSpanElement>(null);
-  const rocksRef = useRef<HTMLSpanElement>(null);
-  const poolRef = useRef<HTMLSpanElement>(null);
-  const minedRef = useRef<HTMLSpanElement>(null);
-  const statsAnimated = useRef(false);
+  const rocksRef  = useRef<HTMLSpanElement>(null);
+  const poolRef   = useRef<HTMLSpanElement>(null);
+  const minedRef  = useRef<HTMLSpanElement>(null);
+  const prevStats = useRef({ agents: 0, rocks: 0, mined: 0 });
 
+  // Initial animate on mount, then poll every 5s for live updates
   useEffect(() => {
-    if (!statsAnimated.current) {
-      statsAnimated.current = true;
-      setTimeout(() => {
-        if (agentsRef.current) animateCount(agentsRef.current, 8);
-        if (rocksRef.current) animateCount(rocksRef.current, 847);
-        if (poolRef.current) animateCount(poolRef.current, 1.505, 3);
-        if (minedRef.current) animateCount(minedRef.current, 0.228, 3);
-      }, 300);
-    }
+    const update = (animate: boolean) => {
+      const { agents, rocks, mined } = readGameStats();
+      const prev = prevStats.current;
+
+      if (agentsRef.current && agents !== prev.agents) {
+        if (animate) animateCount(agentsRef.current, agents);
+        else agentsRef.current.textContent = String(agents);
+      }
+      if (rocksRef.current && rocks !== prev.rocks) {
+        if (animate) animateCount(rocksRef.current, rocks);
+        else rocksRef.current.textContent = String(rocks);
+      }
+      if (poolRef.current) {
+        if (animate) animateCount(poolRef.current, 1.505, 3);
+        // pool stays fixed (no on-chain data)
+      }
+      if (minedRef.current && Math.abs(mined - prev.mined) > 0.0001) {
+        if (animate) animateCount(minedRef.current, mined, 3);
+        else minedRef.current.textContent = mined.toFixed(3);
+      }
+
+      prevStats.current = { agents, rocks, mined };
+    };
+
+    // First run — animate in
+    setTimeout(() => update(true), 300);
+
+    // Poll every 5s — direct update (no animation flicker)
+    const interval = setInterval(() => update(false), 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
