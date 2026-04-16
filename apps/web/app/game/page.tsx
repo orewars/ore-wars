@@ -73,9 +73,8 @@ function genMap(): Array<Array<{ type: string; hasOre: boolean; oreAmount: numbe
         const prob = dist < 2 ? 0.7 : dist < r ? 0.35 : 0.1;
         if (Math.random() < prob) {
           const r2 = Math.random();
-          const amount = r2 < 0.7 ? 0.001 + Math.random() * 0.004
-                       : r2 < 0.95 ? 0.005 + Math.random() * 0.015
-                       : 0.02 + Math.random() * 0.08;
+          // Mock ore: max 0.001 ETH so it looks small/realistic
+          const amount = Math.min(0.0001 + Math.random() * 0.0009, 0.001);
           map[y][x] = { type: "rock", hasOre: true, oreAmount: amount };
         }
       }
@@ -300,7 +299,7 @@ export default function GamePage() {
               map[yy][xx] = {
                 type: "rock",
                 hasOre: r2 < 0.15,
-                oreAmount: r2 < 0.15 ? 0.001 + Math.random() * 0.01 : 0,
+                oreAmount: r2 < 0.15 ? Math.min(0.0001 + Math.random() * 0.0009, 0.001) : 0,
               };
               regen++;
             }
