@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: orewars-game-server
+    runtime: node
+    buildCommand: cd apps/game-server && npm install && npm run build
+    startCommand: cd apps/game-server && npm start
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+    rootDir: .

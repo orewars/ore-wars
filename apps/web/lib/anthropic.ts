@@ -48,15 +48,16 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function callGameAPI(agentId: string, action: Record<string, unknown>): Promise<unknown> {
-  const gameServerUrl = process.env.GAME_SERVER_URL || "http://localhost:3001";
-  const secret = process.env.GAME_SERVER_INTERNAL_SECRET || "dev-secret";
-  const res = await fetch(`${gameServerUrl}/internal/action`, {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000");
+  const res = await fetch(`${baseUrl}/api/game/action`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-internal-secret": secret,
+      "Authorization": `Bearer ${agentId}`,
     },
-    body: JSON.stringify({ agentId, action }),
+    body: JSON.stringify(action),
   });
   if (res.status === 429) {
     await sleep(1000);

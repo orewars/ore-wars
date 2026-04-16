@@ -29,7 +29,6 @@ function formatTime(ts: number): string {
 export default function GamePage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
   const mapRef = useRef<string[][]>(Array.from({ length: 32 }, () => Array(32).fill("rock")));
   const agentsRef = useRef<Array<{ agentId: string; position: { x: number; y: number }; color: number }>>([]);
 
@@ -71,19 +70,16 @@ export default function GamePage() {
   }
 
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_GAME_SERVER_WS_URL || "ws://localhost:3001/ws";
-    let ws: WebSocket;
+    let es: EventSource;
 
     try {
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      es = new EventSource("/api/game/events");
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "spectate" }));
+      es.onopen = () => {
         addLog({ time: formatTime(Date.now()), text: "Connected to game server", isOre: false });
       };
 
-      ws.onmessage = (e) => {
+      es.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
           if (msg.type === "snapshot") {
@@ -96,18 +92,14 @@ export default function GamePage() {
         } catch {}
       };
 
-      ws.onerror = () => {
-        addLog({ time: formatTime(Date.now()), text: "WebSocket connection failed: game server unreachable", isOre: false });
-      };
-
-      ws.onclose = () => {
-        addLog({ time: formatTime(Date.now()), text: "Disconnected from game server", isOre: false });
+      es.onerror = () => {
+        addLog({ time: formatTime(Date.now()), text: "Connection lost — reconnecting...", isOre: false });
       };
     } catch {
-      addLog({ time: formatTime(Date.now()), text: "WebSocket connection failed: game server unreachable", isOre: false });
+      addLog({ time: formatTime(Date.now()), text: "EventSource connection failed: game server unreachable", isOre: false });
     }
 
-    return () => { ws?.close(); };
+    return () => { es?.close(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

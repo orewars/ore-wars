@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAddress } from "viem";
 import Anthropic from "@anthropic-ai/sdk";
 import { nanoid } from "nanoid";
+import { getGameEngine } from "@/lib/game-engine";
 
 const NAME_REGEX = /^[A-Z0-9_]{1,16}$/;
 
@@ -78,37 +79,10 @@ export async function POST(req: NextRequest) {
   }
 
   const agentId = `agent_${nanoid(8)}`;
-  const gameServerUrl = process.env.GAME_SERVER_URL || "http://localhost:3001";
-  const secret = process.env.GAME_SERVER_INTERNAL_SECRET || "dev-secret";
 
-  // Spawn agent in game server
-  let spawnPosition: { x: number; y: number };
-  try {
-    const spawnRes = await fetch(`${gameServerUrl}/internal/spawn-agent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-internal-secret": secret,
-      },
-      body: JSON.stringify({ agentId, name, walletAddress, strategy }),
-    });
-
-    if (!spawnRes.ok) {
-      const err = await spawnRes.json();
-      return NextResponse.json({
-        error: `Game server rejected spawn: ${err.error}`,
-        code: "SPAWN_FAILED"
-      }, { status: 500 });
-    }
-
-    const spawnData = await spawnRes.json();
-    spawnPosition = spawnData.spawnPosition;
-  } catch (err) {
-    return NextResponse.json({
-      error: `Game server unreachable: ${(err as Error).message}`,
-      code: "GAME_SERVER_UNREACHABLE"
-    }, { status: 503 });
-  }
+  // Spawn agent directly in game engine
+  const engine = getGameEngine();
+  const spawnPosition = engine.spawnAgent(agentId, name!, walletAddress!, strategy as "AGGRESSIVE" | "BALANCED" | "CONSERVATIVE");
 
   // Store agent info for stream lookup (in production: Redis or DB)
   // For now: store in global map with API key (encrypted in production)
