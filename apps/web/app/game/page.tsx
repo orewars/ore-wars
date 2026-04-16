@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface LogEntry {
   time: string;
   text: string;
@@ -16,30 +18,39 @@ interface MockAgent {
   ethMined: number;
   rocksMined: number;
   energy: number;
-  // Internal sim state
   tickOffset: number;
   strategy: "aggressive" | "balanced" | "conservative";
 }
 
+// Real agent from /api/game/map
+interface RealAgent {
+  agentId: string;
+  name: string;
+  position: { x: number; y: number };
+  status: string;
+  ethMined: number;
+  rocksMined: number;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const AGENT_COLORS = ["#40e8d0","#f5a623","#e84040","#6b7cff","#a0e840","#e840d0","#40a0e8","#e8d040"];
 const AGENT_DEFS: Array<Omit<MockAgent,"position"|"ethMined"|"rocksMined"|"energy">> = [
-  { agentId: "agent_k9mXp2aQ", name: "VOID_MINER",   color: 0, tickOffset: 0,  strategy: "aggressive"   },
-  { agentId: "agent_7vBnR3wE", name: "DEEP_SCAN_X",  color: 1, tickOffset: 3,  strategy: "balanced"     },
-  { agentId: "agent_Lq4mT9sY", name: "ORE_HUNTER",   color: 2, tickOffset: 7,  strategy: "aggressive"   },
-  { agentId: "agent_2pWxC8nJ", name: "BASE_CRAWLR",  color: 3, tickOffset: 11, strategy: "conservative" },
-  { agentId: "agent_hF5rK1oS", name: "ROCK_BRKR",    color: 4, tickOffset: 5,  strategy: "balanced"     },
-  { agentId: "agent_yN6qA4tD", name: "CLUSTER_BOT",  color: 5, tickOffset: 2,  strategy: "aggressive"   },
-  { agentId: "agent_mG8sZ0uR", name: "ETH_SEEKER",   color: 6, tickOffset: 9,  strategy: "conservative" },
-  { agentId: "agent_bV3jI7eP", name: "GRID_SWEEP",   color: 7, tickOffset: 14, strategy: "balanced"     },
+  { agentId: "mock_k9mXp2aQ", name: "VOID_MINER",   color: 0, tickOffset: 0,  strategy: "aggressive"   },
+  { agentId: "mock_7vBnR3wE", name: "DEEP_SCAN_X",  color: 1, tickOffset: 3,  strategy: "balanced"     },
+  { agentId: "mock_Lq4mT9sY", name: "ORE_HUNTER",   color: 2, tickOffset: 7,  strategy: "aggressive"   },
+  { agentId: "mock_2pWxC8nJ", name: "BASE_CRAWLR",  color: 3, tickOffset: 11, strategy: "conservative" },
+  { agentId: "mock_hF5rK1oS", name: "ROCK_BRKR",    color: 4, tickOffset: 5,  strategy: "balanced"     },
+  { agentId: "mock_yN6qA4tD", name: "CLUSTER_BOT",  color: 5, tickOffset: 2,  strategy: "aggressive"   },
+  { agentId: "mock_mG8sZ0uR", name: "ETH_SEEKER",   color: 6, tickOffset: 9,  strategy: "conservative" },
+  { agentId: "mock_bV3jI7eP", name: "GRID_SWEEP",   color: 7, tickOffset: 14, strategy: "balanced"     },
 ];
 
-// Start positions spread across map
 const START_POSITIONS = [
   { x: 3,  y: 3  }, { x: 28, y: 3  }, { x: 3,  y: 28 }, { x: 28, y: 28 },
   { x: 15, y: 3  }, { x: 3,  y: 15 }, { x: 28, y: 15 }, { x: 15, y: 28 },
 ];
 
-// Ore cluster centres
 const ORE_CLUSTERS = [
   { cx: 8,  cy: 8,  r: 4 },
   { cx: 24, cy: 8,  r: 4 },
@@ -51,18 +62,19 @@ const ORE_CLUSTERS = [
 const SIZE = 32;
 const TILE = 16;
 
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  return [d.getHours(), d.getMinutes(), d.getSeconds()]
-    .map(n => n.toString().padStart(2, "0")).join(":");
-}
+// ─── Ore rarity: ~3% chance per rock — rare ──────────────────────────────────
+// Ore only spawns in tight cluster cores, everything else is empty
+const ORE_CHANCE_CORE = 0.25;   // within 1.5 tiles of cluster centre
+const ORE_CHANCE_MID  = 0.08;   // 1.5–3 tiles
+const ORE_CHANCE_EDGE = 0.02;   // 3+ tiles (very rare scatter)
 
-function inBounds(x: number, y: number) { return x >= 0 && x < SIZE && y >= 0 && y < SIZE; }
-
-const MAP_KEY = "orewars_map_v1";
+// ─── Persistence keys ─────────────────────────────────────────────────────────
+const MAP_KEY    = "orewars_map_v1";
 const AGENTS_KEY = "orewars_agents_v1";
 
 type MapTile = { type: string; hasOre: boolean; oreAmount: number };
+
+function inBounds(x: number, y: number) { return x >= 0 && x < SIZE && y >= 0 && y < SIZE; }
 
 function genMap(): MapTile[][] {
   const map: MapTile[][] = Array.from({ length: SIZE }, () =>
@@ -74,9 +86,12 @@ function genMap(): MapTile[][] {
         const x = cx + dx, y = cy + dy;
         if (!inBounds(x, y)) continue;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        const prob = dist < 2 ? 0.7 : dist < r ? 0.35 : 0.1;
+        const prob = dist < 1.5 ? ORE_CHANCE_CORE
+                   : dist < r   ? ORE_CHANCE_MID
+                   : ORE_CHANCE_EDGE;
         if (Math.random() < prob) {
-          const amount = Math.min(0.0001 + Math.random() * 0.0009, 0.001);
+          // Tiny amounts — realistic feel
+          const amount = Math.min(0.00005 + Math.random() * 0.00045, 0.0005);
           map[y][x] = { type: "rock", hasOre: true, oreAmount: amount };
         }
       }
@@ -138,13 +153,20 @@ function saveAgents(agentList: MockAgent[]) {
   } catch {}
 }
 
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map(n => n.toString().padStart(2, "0")).join(":");
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function GamePage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const logRef = useRef<LogEntry[]>([]);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
-  // Shared mutable state for simulation — persisted in localStorage
   const mapData = useRef<MapTile[][]>(typeof window !== "undefined" ? loadMap() : genMap());
   const agents = useRef<MockAgent[]>(typeof window !== "undefined" ? loadAgents() : AGENT_DEFS.map((def, i) => ({
     ...def, position: { ...START_POSITIONS[i] }, ethMined: 0, rocksMined: 0, energy: 100,
@@ -154,12 +176,16 @@ export default function GamePage() {
   ));
   const particles = useRef<Array<{ x: number; y: number; life: number; isOre: boolean }>>([]);
 
+  // Real deployed agents from /api/game/map
+  const realAgents = useRef<RealAgent[]>([]);
+  const [realAgentCount, setRealAgentCount] = useState(0);
+
   const pushLog = useCallback((entry: LogEntry) => {
     logRef.current = [entry, ...logRef.current].slice(0, 300);
     setLog([...logRef.current]);
   }, []);
 
-  // Draw loop
+  // ─── Draw ───────────────────────────────────────────────────────────────────
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -169,6 +195,7 @@ export default function GamePage() {
     ctx.fillStyle = "#0a0a0f";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Map tiles
     const map = mapData.current;
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
@@ -189,35 +216,90 @@ export default function GamePage() {
     for (const p of particles.current) {
       const alpha = p.life / 25;
       ctx.fillStyle = p.isOre ? `rgba(245,166,35,${alpha})` : `rgba(100,100,160,${alpha})`;
-      const px = p.x * TILE + Math.random() * TILE;
-      const py = p.y * TILE + Math.random() * TILE;
-      ctx.fillRect(px, py, 2, 2);
+      ctx.fillRect(p.x * TILE + Math.random() * TILE, p.y * TILE + Math.random() * TILE, 2, 2);
     }
 
-    // Agents
+    // Mock agents (background visual)
     for (const agent of agents.current) {
       const { x, y } = agent.position;
       const color = AGENT_COLORS[agent.color];
-      // Outer glow
       ctx.shadowBlur = 6;
       ctx.shadowColor = color;
       ctx.fillStyle = color;
       ctx.fillRect(x*TILE+2, y*TILE+2, TILE-4, TILE-4);
       ctx.shadowBlur = 0;
-      // Inner dot
       ctx.fillStyle = "#fff";
       ctx.fillRect(x*TILE+6, y*TILE+6, TILE-12, TILE-12);
     }
+
+    // Real deployed agents — drawn on top, distinct style (white border + name label)
+    for (const ra of realAgents.current) {
+      if (!ra.position) continue;
+      const { x, y } = ra.position;
+      if (!inBounds(x, y)) continue;
+      // White/silver glowing square
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x*TILE+1, y*TILE+1, TILE-2, TILE-2);
+      ctx.shadowBlur = 0;
+      // Name label above the tile
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(x*TILE - 2, y*TILE - 10, TILE + 4, 10);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "6px monospace";
+      ctx.fillText(ra.name.slice(0, 8), x*TILE, y*TILE - 2);
+    }
   }
 
+  // ─── Poll real agents from API ───────────────────────────────────────────────
   useEffect(() => {
-    // Initial draw
+    const pollReal = async () => {
+      try {
+        const res = await fetch("/api/game/map");
+        if (!res.ok) return;
+        const data = await res.json();
+        const prev = realAgents.current;
+        const next: RealAgent[] = (data.agents || []).filter((a: RealAgent) => a.status === "ACTIVE");
+
+        // Log new ore events from real agents by diffing ethMined
+        for (const curr of next) {
+          const old = prev.find(p => p.agentId === curr.agentId);
+          if (old && curr.ethMined > old.ethMined) {
+            const diff = (curr.ethMined - old.ethMined).toFixed(4);
+            pushLog({
+              time: formatTime(Date.now()),
+              text: `${curr.name}  ⛏ ORE MINED — ${diff} ETH claimed! [REAL]`,
+              isOre: true,
+            });
+          }
+          if (!old) {
+            pushLog({
+              time: formatTime(Date.now()),
+              text: `${curr.name}  joined the game at (${curr.position?.x ?? "?"}, ${curr.position?.y ?? "?"})`,
+              isOre: false,
+            });
+          }
+        }
+
+        realAgents.current = next;
+        setRealAgentCount(next.length);
+      } catch {}
+    };
+
+    pollReal();
+    const interval = setInterval(pollReal, 3000);
+    return () => clearInterval(interval);
+  }, [pushLog]);
+
+  // ─── Mock simulation ─────────────────────────────────────────────────────────
+  useEffect(() => {
     draw();
 
-    // Pre-seed mined tiles ONLY if this is a fresh map (no saved state)
     const map = mapData.current;
-    const hasSavedState = typeof window !== "undefined" && !!localStorage.getItem(MAP_KEY);
-    if (!hasSavedState) {
+    const hasSaved = typeof window !== "undefined" && !!localStorage.getItem(MAP_KEY);
+    if (!hasSaved) {
       for (let i = 0; i < 80; i++) {
         const x = Math.floor(Math.random() * SIZE);
         const y = Math.floor(Math.random() * SIZE);
@@ -227,7 +309,6 @@ export default function GamePage() {
       }
     }
 
-    // Log initial spawn events
     setTimeout(() => {
       for (const agent of agents.current) {
         pushLog({
@@ -236,10 +317,11 @@ export default function GamePage() {
           isOre: false,
         });
       }
-      pushLog({ time: formatTime(Date.now()), text: "Connected to game server", isOre: false });
+      pushLog({ time: formatTime(Date.now()), text: "Game server connected", isOre: false });
     }, 200);
 
     let tick = 0;
+    const DIRS = [[0,-1],[0,1],[1,0],[-1,0]] as const;
 
     const simInterval = setInterval(() => {
       tick++;
@@ -250,24 +332,19 @@ export default function GamePage() {
         if (particles.current[i].life <= 0) particles.current.splice(i, 1);
       }
 
-      const map = mapData.current;
       const agentList = agents.current;
       const pm = posMap.current;
-      const DIRS = [[0,-1],[0,1],[1,0],[-1,0]] as const;
 
       for (let i = 0; i < agentList.length; i++) {
         const agent = agentList[i];
-        // Each agent ticks at different speed based on tickOffset and strategy
         const speed = agent.strategy === "aggressive" ? 1 : agent.strategy === "balanced" ? 2 : 3;
         if ((tick + agent.tickOffset) % speed !== 0) continue;
 
         const { x, y } = agent.position;
-
-        // 40% chance mine adjacent, 60% chance move
         const action = Math.random();
 
         if (action < 0.45) {
-          // MINE — pick a direction, mine that tile
+          // MINE
           const dir = DIRS[Math.floor(Math.random() * 4)];
           const tx = x + dir[0], ty = y + dir[1];
           if (!inBounds(tx, ty)) continue;
@@ -283,32 +360,25 @@ export default function GamePage() {
             agent.ethMined += eth;
             pushLog({
               time: formatTime(Date.now()),
-              text: `${agent.name}  ⛏ ORE FOUND at (${tx},${ty}) — ${eth.toFixed(4)} ETH claimed!`,
+              text: `${agent.name}  ⛏ ORE FOUND at (${tx},${ty}) — ${eth.toFixed(4)} ETH`,
               isOre: true,
             });
-          } else {
-            // Only log ~30% of empty mines to avoid spam
-            if (Math.random() < 0.30) {
-              pushLog({
-                time: formatTime(Date.now()),
-                text: `${agent.name}  mined rock at (${tx},${ty}) — empty`,
-                isOre: false,
-              });
-            }
+          } else if (Math.random() < 0.20) {
+            pushLog({
+              time: formatTime(Date.now()),
+              text: `${agent.name}  mined rock at (${tx},${ty}) — empty`,
+              isOre: false,
+            });
           }
-
         } else {
-          // MOVE — find a free non-rock tile
+          // MOVE
           const shuffled = [...DIRS].sort(() => Math.random() - 0.5);
           for (const dir of shuffled) {
             const nx = x + dir[0], ny = y + dir[1];
             if (!inBounds(nx, ny)) continue;
+            if (pm.has(`${nx},${ny}`)) continue;
             const tile = map[ny][nx];
-            const occupied = pm.has(`${nx},${ny}`);
-            if (occupied) continue;
-
             if (tile.type === "rock") {
-              // Mine to clear path (no log)
               tile.type = tile.hasOre ? "ore_revealed" : "mined";
               agent.rocksMined++;
               if (tile.hasOre) {
@@ -317,76 +387,63 @@ export default function GamePage() {
                 particles.current.push({ x: nx, y: ny, life: 25, isOre: true });
                 pushLog({
                   time: formatTime(Date.now()),
-                  text: `${agent.name}  ⛏ ORE FOUND at (${nx},${ny}) — ${eth.toFixed(4)} ETH claimed!`,
+                  text: `${agent.name}  ⛏ ORE FOUND at (${nx},${ny}) — ${eth.toFixed(4)} ETH`,
                   isOre: true,
                 });
               }
             }
-
-            // Move
             pm.delete(`${x},${y}`);
             agent.position = { x: nx, y: ny };
             pm.set(`${nx},${ny}`, i);
-
-            // Log move ~15% of the time
-            if (Math.random() < 0.15) {
-              pushLog({
-                time: formatTime(Date.now()),
-                text: `${agent.name}  moved (${x},${y}) → (${nx},${ny})`,
-                isOre: false,
-              });
+            if (Math.random() < 0.10) {
+              pushLog({ time: formatTime(Date.now()), text: `${agent.name}  moved (${x},${y}) → (${nx},${ny})`, isOre: false });
             }
             break;
           }
         }
       }
 
-      // Occasionally regenerate ore on mined tiles so game never empties
-      if (tick % 120 === 0) {
+      // Regen every ~80s
+      if (tick % 230 === 0) {
         let regen = 0;
-        for (let yy = 0; yy < SIZE && regen < 12; yy++) {
-          for (let xx = 0; xx < SIZE && regen < 12; xx++) {
-            if (map[yy][xx].type === "mined" && Math.random() < 0.05) {
-              const r2 = Math.random();
+        for (let yy = 0; yy < SIZE && regen < 8; yy++) {
+          for (let xx = 0; xx < SIZE && regen < 8; xx++) {
+            if (map[yy][xx].type === "mined" && Math.random() < 0.04) {
+              // Very rare ore on regen
+              const isOre = Math.random() < 0.04;
               map[yy][xx] = {
                 type: "rock",
-                hasOre: r2 < 0.15,
-                oreAmount: r2 < 0.15 ? Math.min(0.0001 + Math.random() * 0.0009, 0.001) : 0,
+                hasOre: isOre,
+                oreAmount: isOre ? Math.min(0.00005 + Math.random() * 0.00045, 0.0005) : 0,
               };
               regen++;
             }
           }
         }
-        if (regen > 0) {
-          pushLog({ time: formatTime(Date.now()), text: `Map regenerated — ${regen} new rocks added`, isOre: false });
-        }
+        if (regen > 0) pushLog({ time: formatTime(Date.now()), text: `Map regen — ${regen} new rocks`, isOre: false });
       }
 
       draw();
 
-      // Persist state every 30 ticks (~10s) so refresh restores progress
       if (tick % 30 === 0) {
         saveMap(mapData.current);
         saveAgents(agentList);
       }
-    }, 350); // ~2.8 ticks/sec = lively but readable
+    }, 350);
 
     return () => {
       clearInterval(simInterval);
-      // Save on unmount too
       saveMap(mapData.current);
       saveAgents(agents.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-scroll log to top (new entries prepend)
   useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = 0;
-    }
+    if (logContainerRef.current) logContainerRef.current.scrollTop = 0;
   }, [log]);
 
+  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <Header />
@@ -402,29 +459,37 @@ export default function GamePage() {
           />
 
           {/* Minimap */}
-          <div style={{
-            position: "absolute", top: 16, right: 16,
-            width: 80, height: 80,
-            border: "1px solid var(--border-subtle)",
-            background: "rgba(10,10,15,0.9)",
-          }}>
-            <MiniMap mapData={mapData} agents={agents} />
+          <div style={{ position: "absolute", top: 16, right: 16, width: 80, height: 80, border: "1px solid var(--border-subtle)", background: "rgba(10,10,15,0.9)" }}>
+            <MiniMap mapData={mapData} mockAgents={agents} realAgents={realAgents} />
           </div>
 
-          {/* Agent legend */}
+          {/* Legend */}
           <div style={{
             position: "absolute", top: 16, left: 16,
             background: "rgba(10,10,15,0.85)",
             border: "1px solid var(--border-subtle)",
             padding: "8px 10px",
             display: "flex", flexDirection: "column", gap: "4px",
+            maxHeight: "45vh", overflowY: "auto",
           }}>
+            <div style={{ fontSize: "7px", color: "var(--text-muted)", fontFamily: "monospace", marginBottom: 2, letterSpacing: "0.05em" }}>MOCK AGENTS</div>
             {agents.current.map(a => (
               <div key={a.agentId} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <div style={{ width: 8, height: 8, background: AGENT_COLORS[a.color], boxShadow: `0 0 4px ${AGENT_COLORS[a.color]}` }} />
                 <span style={{ fontFamily: "monospace", fontSize: "9px", color: "var(--text-secondary)" }}>{a.name}</span>
               </div>
             ))}
+            {realAgentCount > 0 && (
+              <>
+                <div style={{ fontSize: "7px", color: "var(--text-muted)", fontFamily: "monospace", marginTop: 6, marginBottom: 2, letterSpacing: "0.05em" }}>REAL AGENTS</div>
+                {realAgents.current.map(ra => (
+                  <div key={ra.agentId} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ width: 8, height: 8, border: "1.5px solid #fff", background: "transparent", boxShadow: "0 0 4px #fff" }} />
+                    <span style={{ fontFamily: "monospace", fontSize: "9px", color: "#fff", fontWeight: 600 }}>{ra.name}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
 
@@ -432,14 +497,18 @@ export default function GamePage() {
         <div style={{ borderLeft: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-surface)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="game-label" style={{ fontSize: "8px", color: "var(--text-secondary)" }}>EVENT FEED</span>
-            <span style={{ fontSize: "9px", color: "var(--text-muted)", fontFamily: "monospace" }}>
-              <span style={{ color: "#4caf50", marginRight: 4 }}>●</span>LIVE
-            </span>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {realAgentCount > 0 && (
+                <span style={{ fontSize: "9px", fontFamily: "monospace", color: "#fff" }}>
+                  {realAgentCount} real
+                </span>
+              )}
+              <span style={{ fontSize: "9px", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                <span style={{ color: "#4caf50", marginRight: 4 }}>●</span>LIVE
+              </span>
+            </div>
           </div>
-          <div
-            ref={logContainerRef}
-            style={{ flex: 1, overflowY: "auto", padding: "0", fontFamily: "'JetBrains Mono', monospace", fontSize: "11px" }}
-          >
+          <div ref={logContainerRef} style={{ flex: 1, overflowY: "auto", fontFamily: "'JetBrains Mono', monospace", fontSize: "11px" }}>
             {log.map((entry, i) => (
               <div key={i} style={{
                 padding: "5px 12px",
@@ -458,22 +527,22 @@ export default function GamePage() {
 
       <style>{`
         @media (max-width: 768px) {
-          .game-layout {
-            grid-template-columns: 1fr !important;
-            grid-template-rows: 60% 40%;
-          }
+          .game-layout { grid-template-columns: 1fr !important; grid-template-rows: 60% 40%; }
         }
       `}</style>
     </div>
   );
 }
 
+// ─── MiniMap ──────────────────────────────────────────────────────────────────
 function MiniMap({
   mapData,
-  agents,
+  mockAgents,
+  realAgents,
 }: {
-  mapData: React.MutableRefObject<Array<Array<{ type: string }>>>;
-  agents: React.MutableRefObject<MockAgent[]>;
+  mapData: React.MutableRefObject<MapTile[]>;
+  mockAgents: React.MutableRefObject<MockAgent[]>;
+  realAgents: React.MutableRefObject<RealAgent[]>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -487,24 +556,32 @@ function MiniMap({
       ctx.fillStyle = "#08080f";
       ctx.fillRect(0, 0, 80, 80);
 
-      const map = mapData.current;
+      const map = mapData.current as unknown as MapTile[][];
       for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
           const t = map[y][x].type;
-          if (t === "rock") ctx.fillStyle = "#1e1e2e";
-          else if (t === "ore_revealed") ctx.fillStyle = "#f5a623";
-          else ctx.fillStyle = "#0d0d14";
+          ctx.fillStyle = t === "rock" ? "#1e1e2e" : t === "ore_revealed" ? "#f5a623" : "#0d0d14";
           ctx.fillRect(x * 2.5, y * 2.5, 2.5, 2.5);
         }
       }
 
-      for (const a of agents.current) {
+      for (const a of mockAgents.current) {
         ctx.fillStyle = AGENT_COLORS[a.color];
         ctx.fillRect(a.position.x * 2.5, a.position.y * 2.5, 3, 3);
       }
+
+      // Real agents — white dots
+      for (const ra of realAgents.current) {
+        if (!ra.position) continue;
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = "#ffffff";
+        ctx.fillRect(ra.position.x * 2.5, ra.position.y * 2.5, 4, 4);
+        ctx.shadowBlur = 0;
+      }
     }, 300);
     return () => clearInterval(interval);
-  }, [mapData, agents]);
+  }, [mapData, mockAgents, realAgents]);
 
   return <canvas ref={canvasRef} width={80} height={80} style={{ imageRendering: "pixelated", display: "block" }} />;
 }

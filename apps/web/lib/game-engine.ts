@@ -124,15 +124,16 @@ class GameEngine {
       }))
     );
 
-    // Generate 4 ore clusters
-    const clusters = 4;
+    // 2 rare ore clusters — small, tight, hard to find
+    const clusters = 2;
     for (let c = 0; c < clusters; c++) {
-      const cx = Math.max(2, Math.min(MAP_SIZE - 3, Math.floor(this.gaussianRandom(MAP_SIZE / 2, MAP_SIZE / 4))));
-      const cy = Math.max(2, Math.min(MAP_SIZE - 3, Math.floor(this.gaussianRandom(MAP_SIZE / 2, MAP_SIZE / 4))));
-      const count = 3 + Math.floor(Math.random() * 5);
+      const cx = Math.max(3, Math.min(MAP_SIZE - 4, Math.floor(this.gaussianRandom(MAP_SIZE / 2, MAP_SIZE / 4))));
+      const cy = Math.max(3, Math.min(MAP_SIZE - 4, Math.floor(this.gaussianRandom(MAP_SIZE / 2, MAP_SIZE / 4))));
+      // Only 2-4 ore tiles per cluster — very tight
+      const count = 2 + Math.floor(Math.random() * 3);
       for (let i = 0; i < count; i++) {
-        const ox = Math.max(0, Math.min(MAP_SIZE - 1, Math.round(this.gaussianRandom(cx, 2.5))));
-        const oy = Math.max(0, Math.min(MAP_SIZE - 1, Math.round(this.gaussianRandom(cy, 2.5))));
+        const ox = Math.max(0, Math.min(MAP_SIZE - 1, Math.round(this.gaussianRandom(cx, 1.5))));
+        const oy = Math.max(0, Math.min(MAP_SIZE - 1, Math.round(this.gaussianRandom(cy, 1.5))));
         const amount = this.pickOreAmount();
         this.grid[oy][ox].rock = { hasOre: true, oreAmount: amount, mined: false };
       }
@@ -148,10 +149,11 @@ class GameEngine {
   }
 
   private pickOreAmount(): number {
+    // Rare, small amounts — max 0.001 ETH
     const r = Math.random();
-    if (r < 0.70) return 0.001 + Math.random() * 0.004;
-    if (r < 0.95) return 0.005 + Math.random() * 0.015;
-    return 0.02 + Math.random() * 0.08;
+    if (r < 0.75) return 0.00005 + Math.random() * 0.0002;  // tiny common ore
+    if (r < 0.97) return 0.0002  + Math.random() * 0.0005;  // medium ore
+    return 0.0008 + Math.random() * 0.0002;                  // ~0.001 ETH jackpot
   }
 
   private tickLoop() {
