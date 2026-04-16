@@ -6,7 +6,7 @@ const CONTRACT = process.env.CONTRACT_ADDRESS || "0x7c9bDF3F3b4662371a86A6Cd7cab
 const RPC = process.env.BASE_RPC_URL || "https://mainnet.base.org";
 
 // prizePool() function selector = keccak256("prizePool()")[0:4]
-const PRIZE_POOL_SELECTOR = "0x4d07554a";
+const PRIZE_POOL_SELECTOR = "0x719ce73e";
 
 export async function GET() {
   try {
