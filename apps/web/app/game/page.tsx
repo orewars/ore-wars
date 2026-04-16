@@ -59,11 +59,15 @@ function formatTime(ts: number): string {
 
 function inBounds(x: number, y: number) { return x >= 0 && x < SIZE && y >= 0 && y < SIZE; }
 
-function genMap(): Array<Array<{ type: string; hasOre: boolean; oreAmount: number }>> {
-  const map = Array.from({ length: SIZE }, () =>
+const MAP_KEY = "orewars_map_v1";
+const AGENTS_KEY = "orewars_agents_v1";
+
+type MapTile = { type: string; hasOre: boolean; oreAmount: number };
+
+function genMap(): MapTile[][] {
+  const map: MapTile[][] = Array.from({ length: SIZE }, () =>
     Array.from({ length: SIZE }, () => ({ type: "rock", hasOre: false, oreAmount: 0 }))
   );
-  // Seed ore clusters
   for (const { cx, cy, r } of ORE_CLUSTERS) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -72,8 +76,6 @@ function genMap(): Array<Array<{ type: string; hasOre: boolean; oreAmount: numbe
         const dist = Math.sqrt(dx*dx + dy*dy);
         const prob = dist < 2 ? 0.7 : dist < r ? 0.35 : 0.1;
         if (Math.random() < prob) {
-          const r2 = Math.random();
-          // Mock ore: max 0.001 ETH so it looks small/realistic
           const amount = Math.min(0.0001 + Math.random() * 0.0009, 0.001);
           map[y][x] = { type: "rock", hasOre: true, oreAmount: amount };
         }
@@ -83,25 +85,72 @@ function genMap(): Array<Array<{ type: string; hasOre: boolean; oreAmount: numbe
   return map;
 }
 
+function loadMap(): MapTile[][] {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(MAP_KEY) : null;
+    if (raw) return JSON.parse(raw) as MapTile[][];
+  } catch {}
+  return genMap();
+}
+
+function saveMap(map: MapTile[][]) {
+  try { localStorage.setItem(MAP_KEY, JSON.stringify(map)); } catch {}
+}
+
+type SavedAgent = { agentId: string; position: { x: number; y: number }; ethMined: number; rocksMined: number };
+
+function loadAgents(): MockAgent[] {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(AGENTS_KEY) : null;
+    if (raw) {
+      const saved: SavedAgent[] = JSON.parse(raw);
+      return AGENT_DEFS.map((def, i) => {
+        const s = saved.find(a => a.agentId === def.agentId);
+        return {
+          ...def,
+          position: s ? { ...s.position } : { ...START_POSITIONS[i] },
+          ethMined: s?.ethMined ?? 0,
+          rocksMined: s?.rocksMined ?? 0,
+          energy: 100,
+        };
+      });
+    }
+  } catch {}
+  return AGENT_DEFS.map((def, i) => ({
+    ...def,
+    position: { ...START_POSITIONS[i] },
+    ethMined: 0,
+    rocksMined: 0,
+    energy: 100,
+  }));
+}
+
+function saveAgents(agentList: MockAgent[]) {
+  try {
+    localStorage.setItem(AGENTS_KEY, JSON.stringify(
+      agentList.map(a => ({
+        agentId: a.agentId,
+        position: { ...a.position },
+        ethMined: a.ethMined,
+        rocksMined: a.rocksMined,
+      }))
+    ));
+  } catch {}
+}
+
 export default function GamePage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const logRef = useRef<LogEntry[]>([]);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
-  // Shared mutable state for simulation
-  const mapData = useRef(genMap());
-  const agents = useRef<MockAgent[]>(
-    AGENT_DEFS.map((def, i) => ({
-      ...def,
-      position: { ...START_POSITIONS[i] },
-      ethMined: 0,
-      rocksMined: 0,
-      energy: 100,
-    }))
-  );
+  // Shared mutable state for simulation — persisted in localStorage
+  const mapData = useRef<MapTile[][]>(typeof window !== "undefined" ? loadMap() : genMap());
+  const agents = useRef<MockAgent[]>(typeof window !== "undefined" ? loadAgents() : AGENT_DEFS.map((def, i) => ({
+    ...def, position: { ...START_POSITIONS[i] }, ethMined: 0, rocksMined: 0, energy: 100,
+  })));
   const posMap = useRef<Map<string, number>>(new Map(
-    AGENT_DEFS.map((_, i) => [`${START_POSITIONS[i].x},${START_POSITIONS[i].y}`, i])
+    agents.current.map((a, i) => [`${a.position.x},${a.position.y}`, i])
   ));
   const particles = useRef<Array<{ x: number; y: number; life: number; isOre: boolean }>>([]);
 
@@ -165,13 +214,16 @@ export default function GamePage() {
     // Initial draw
     draw();
 
-    // Pre-seed some mined tiles around starting positions so map looks used
+    // Pre-seed mined tiles ONLY if this is a fresh map (no saved state)
     const map = mapData.current;
-    for (let i = 0; i < 80; i++) {
-      const x = Math.floor(Math.random() * SIZE);
-      const y = Math.floor(Math.random() * SIZE);
-      if (map[y][x].type === "rock" && !map[y][x].hasOre) {
-        map[y][x].type = "mined";
+    const hasSavedState = typeof window !== "undefined" && !!localStorage.getItem(MAP_KEY);
+    if (!hasSavedState) {
+      for (let i = 0; i < 80; i++) {
+        const x = Math.floor(Math.random() * SIZE);
+        const y = Math.floor(Math.random() * SIZE);
+        if (map[y][x].type === "rock" && !map[y][x].hasOre) {
+          map[y][x].type = "mined";
+        }
       }
     }
 
@@ -311,9 +363,20 @@ export default function GamePage() {
       }
 
       draw();
+
+      // Persist state every 30 ticks (~10s) so refresh restores progress
+      if (tick % 30 === 0) {
+        saveMap(mapData.current);
+        saveAgents(agentList);
+      }
     }, 350); // ~2.8 ticks/sec = lively but readable
 
-    return () => clearInterval(simInterval);
+    return () => {
+      clearInterval(simInterval);
+      // Save on unmount too
+      saveMap(mapData.current);
+      saveAgents(agents.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
