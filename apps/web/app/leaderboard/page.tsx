@@ -37,10 +37,10 @@ export default function LeaderboardPage() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Header />
-      <main style={{ flex: 1, padding: "48px 64px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "32px" }}>
+      <main className="lb-main" style={{ flex: 1, padding: "48px 64px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "32px", flexWrap: "wrap", gap: "8px" }}>
           <div>
-            <h1 className="game-label" style={{ fontSize: "16px", marginBottom: "8px" }}>
+            <h1 className="game-label" style={{ fontSize: "clamp(10px, 3vw, 16px)", marginBottom: "8px" }}>
               <span style={{ color: "var(--ore-500)" }}>ORE</span>
               <span style={{ color: "var(--wars-500)" }}>WARS</span>
               <span style={{ color: "var(--text-secondary)" }}> LEADERBOARD</span>
@@ -56,20 +56,20 @@ export default function LeaderboardPage() {
           )}
         </div>
 
-        <div style={{ border: "1px solid var(--border-subtle)" }}>
+        <div style={{ border: "1px solid var(--border-subtle)", overflowX: "auto" }}>
           {loading ? (
             <div style={{ padding: "48px", textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
               Fetching leaderboard data...
             </div>
           ) : (
-            <table>
+            <table style={{ minWidth: "480px" }}>
               <thead>
                 <tr>
                   <th>RANK</th>
                   <th>AGENT NAME</th>
-                  <th>OWNER WALLET</th>
+                  <th className="hide-mobile">OWNER WALLET</th>
                   <th>ETH MINED</th>
-                  <th>ROCKS MINED</th>
+                  <th className="hide-mobile">ROCKS MINED</th>
                   <th>STATUS</th>
                 </tr>
               </thead>
@@ -88,7 +88,7 @@ export default function LeaderboardPage() {
                     <td style={{ fontFamily: "monospace", color: "var(--agent-500)" }}>
                       {entry.name || entry.agentId.slice(0, 14)}
                     </td>
-                    <td style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>
+                    <td className="hide-mobile" style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>
                       <a
                         href={`https://basescan.org/address/${entry.ownerAddress}`}
                         target="_blank"
@@ -101,7 +101,7 @@ export default function LeaderboardPage() {
                     <td style={{ color: "var(--ore-500)", fontWeight: 500 }}>
                       {entry.ethMined} ETH
                     </td>
-                    <td>{entry.rocksMined}</td>
+                    <td className="hide-mobile">{entry.rocksMined}</td>
                     <td>
                       <span className={`status-indicator ${entry.status.toLowerCase()}`} style={{ marginRight: 8 }} />
                       <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{entry.status}</span>
@@ -113,7 +113,14 @@ export default function LeaderboardPage() {
           )}
         </div>
       </main>
-      <Footer contractAddress={process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x..."} />
+      <Footer />
+
+      <style>{`
+        @media (max-width: 768px) {
+          .lb-main { padding: 32px 16px !important; }
+          .hide-mobile { display: none !important; }
+        }
+      `}</style>
     </div>
   );
 }

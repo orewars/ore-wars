@@ -1,11 +1,12 @@
-export function Footer({ contractAddress = "0x..." }: { contractAddress?: string }) {
+export function Footer() {
   return (
     <footer style={{
       borderTop: "1px solid var(--border-subtle)",
       padding: "20px 32px",
       display: "flex",
-      gap: "24px",
+      gap: "20px",
       alignItems: "center",
+      flexWrap: "wrap",
       fontSize: "11px",
       color: "var(--text-muted)",
       background: "var(--bg-surface)",
@@ -19,12 +20,12 @@ export function Footer({ contractAddress = "0x..." }: { contractAddress?: string
       <span>BASE CHAIN</span>
       <span style={{ color: "var(--border-default)" }}>|</span>
       <a
-        href={`https://basescan.org/address/${contractAddress}`}
+        href="https://x.com/orewarsdotfun"
         target="_blank"
         rel="noopener noreferrer"
-        style={{ color: "var(--eth-500)" }}
+        style={{ color: "var(--text-muted)" }}
       >
-        CONTRACT: {contractAddress.slice(0, 6)}...{contractAddress.slice(-4)}
+        TWITTER
       </a>
       <span style={{ color: "var(--border-default)" }}>|</span>
       <a href="https://github.com/orewars/ore-wars" target="_blank" rel="noopener noreferrer">

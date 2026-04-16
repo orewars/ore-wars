@@ -210,3 +210,23 @@ a:hover { color: var(--ore-500); }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-base); }
 ::-webkit-scrollbar-thumb { background: var(--border-default); }
+
+/* Mobile utilities */
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+
+  header {
+    padding: 0 16px !important;
+  }
+
+  footer {
+    padding: 16px !important;
+    gap: 12px !important;
+    font-size: 10px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .pixel-card {
+    padding: 16px;
+  }
+}

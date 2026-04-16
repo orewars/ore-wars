@@ -139,14 +139,14 @@ export default function GamePage() {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <Header />
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "70% 30%", overflow: "hidden" }}>
+      <div className="game-layout" style={{ flex: 1, display: "grid", gridTemplateColumns: "70% 30%", overflow: "hidden" }}>
         {/* Game Canvas */}
         <div style={{ position: "relative", background: "var(--bg-base)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <canvas
             ref={canvasRef}
             width={512}
             height={512}
-            style={{ imageRendering: "pixelated", display: "block" }}
+            style={{ imageRendering: "pixelated", display: "block", maxWidth: "100%", maxHeight: "100%" }}
           />
           {/* Minimap */}
           <div style={{
@@ -191,9 +191,10 @@ export default function GamePage() {
                 color: entry.isOre ? "var(--ore-500)" : "var(--text-secondary)",
                 display: "flex",
                 gap: "8px",
+                flexWrap: "wrap",
               }}>
                 <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>[{entry.time}]</span>
-                <span>{entry.text}</span>
+                <span style={{ wordBreak: "break-all" }}>{entry.text}</span>
               </div>
             ))}
             {log.length === 0 && (
@@ -204,6 +205,15 @@ export default function GamePage() {
           </div>
         </div>
       </div>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .game-layout {
+            grid-template-columns: 1fr !important;
+            grid-template-rows: 60% 40%;
+          }
+        }
+      `}</style>
     </div>
   );
 }

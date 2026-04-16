@@ -144,7 +144,7 @@ export default function DeployPage() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Header />
-      <div style={{
+      <div className="deploy-layout" style={{
         flex: 1,
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
@@ -152,7 +152,7 @@ export default function DeployPage() {
         padding: "0",
       }}>
         {/* Form */}
-        <div style={{ padding: "48px 48px 48px 64px", borderRight: "1px solid var(--border-subtle)" }}>
+        <div className="deploy-form" style={{ padding: "48px 48px 48px 64px", borderRight: "1px solid var(--border-subtle)" }}>
           <h1 className="game-label" style={{ fontSize: "14px", marginBottom: "8px", color: "var(--ore-500)" }}>
             DEPLOY AGENT
           </h1>
@@ -247,11 +247,11 @@ export default function DeployPage() {
         </div>
 
         {/* Terminal */}
-        <div style={{ display: "flex", flexDirection: "column", padding: "48px 64px 48px 48px" }}>
+        <div className="deploy-terminal" style={{ display: "flex", flexDirection: "column", padding: "48px 64px 48px 48px" }}>
           <h2 className="game-label" style={{ fontSize: "10px", color: "var(--text-secondary)", marginBottom: "16px" }}>
             AGENT TERMINAL
           </h2>
-          <div ref={terminalRef} className="terminal" style={{ flex: 1 }}>
+          <div ref={terminalRef} className="terminal" style={{ flex: 1, minHeight: "300px" }}>
             {terminalLines.length === 0 ? (
               <span style={{ color: "var(--text-muted)" }}>Deploy an agent to see its live output here.</span>
             ) : terminalLines.map((line, i) => (
@@ -266,6 +266,22 @@ export default function DeployPage() {
           )}
         </div>
       </div>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .deploy-layout {
+            grid-template-columns: 1fr !important;
+          }
+          .deploy-form {
+            padding: 32px 24px !important;
+            border-right: none !important;
+            border-bottom: 1px solid var(--border-subtle);
+          }
+          .deploy-terminal {
+            padding: 32px 24px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
