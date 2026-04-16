@@ -41,37 +41,38 @@ function animateCount(el: HTMLElement, target: number, decimals = 0) {
   requestAnimationFrame(update);
 }
 
-// Read live game stats from localStorage (written by game page sim)
-function readGameStats(): { agents: number; rocks: number; mined: number } {
+// Read live game stats — localStorage for map/mock, server for real agents
+async function fetchGameStats(): Promise<{ agents: number; rocks: number; mined: number }> {
   try {
     const map = JSON.parse(localStorage.getItem("orewars_map_v1") || "null");
-    const realAgents = JSON.parse(localStorage.getItem("orewars_real_agents") || "[]");
     const mockAgents = JSON.parse(localStorage.getItem("orewars_mock_agents_v2") || "null");
 
     // Count rocks remaining from map
     let rocks = 0;
     if (map) {
       for (const row of map) for (const tile of row) if (tile.type === "rock") rocks++;
-    } else {
-      rocks = 847;
-    }
+    } else rocks = 847;
 
-    // Active agents: 8 mock + real agents count
-    const realCount = Array.isArray(realAgents) ? realAgents.filter((a: {deployedAt?: number}) =>
-      !a.deployedAt || Date.now() - a.deployedAt < 24 * 60 * 60 * 1000
-    ).length : 0;
+    // Fetch real agents from server
+    let realAgents: Array<{ethMined: number}> = [];
+    try {
+      const res = await fetch("/api/agents", { cache: "no-store" });
+      if (res.ok) { const d = await res.json(); realAgents = d.agents ?? []; }
+    } catch {}
+
+    // Also check localStorage for this device's own agents (faster)
+    let localReal: Array<{ethMined: number; deployedAt?: number}> = [];
+    try {
+      localReal = JSON.parse(localStorage.getItem("orewars_real_agents") || "[]");
+    } catch {}
+
+    const realCount = Math.max(realAgents.length, localReal.filter(a => !a.deployedAt || Date.now() - a.deployedAt < 86400000).length);
     const agents = 8 + realCount;
 
-    // Total ETH mined from mock agents + real agents
     let mined = 0;
-    if (Array.isArray(mockAgents)) {
-      for (const a of mockAgents) mined += a.ethMined ?? 0;
-    } else {
-      mined = 0.228; // fallback baseline
-    }
-    if (Array.isArray(realAgents)) {
-      for (const a of realAgents) mined += a.ethMined ?? 0;
-    }
+    if (Array.isArray(mockAgents)) for (const a of mockAgents) mined += a.ethMined ?? 0;
+    else mined = 0.228;
+    for (const a of realAgents) mined += a.ethMined ?? 0;
 
     return { agents, rocks, mined };
   } catch {
@@ -89,8 +90,8 @@ export default function HomePage() {
 
   // Initial animate on mount, then poll every 5s for live updates
   useEffect(() => {
-    const update = (animate: boolean) => {
-      const { agents, rocks, mined } = readGameStats();
+    const update = async (animate: boolean) => {
+      const { agents, rocks, mined } = await fetchGameStats();
       const prev = prevStats.current;
 
       if (agentsRef.current && agents !== prev.agents) {

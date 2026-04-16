@@ -69,10 +69,9 @@ export async function POST(req: NextRequest) {
     console.warn("[deploy] Anthropic test call non-401 error:", err);
   }
 
-  // Use the agent name directly as the identifier (human-readable)
   const agentId = name!;
 
-  // Spawn into game engine
+  // Spawn into game engine (in-memory, best effort)
   const engine = getGameEngine();
   const spawnPosition = engine.spawnAgent(
     agentId,
@@ -81,11 +80,35 @@ export async function POST(req: NextRequest) {
     strategy as "AGGRESSIVE" | "BALANCED" | "CONSERVATIVE"
   );
 
+  // ── Persist agent to Edge Config so all devices/browsers see it ────────────
+  const baseUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000";
+
+  try {
+    await fetch(`${baseUrl}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agentId,
+        name,
+        position: spawnPosition,
+        status: "ACTIVE",
+        ethMined: 0,
+        rocksMined: 0,
+        deployedAt: Date.now(),
+        walletAddress,
+        strategy,
+      }),
+    });
+  } catch (e) {
+    console.warn("[deploy] Failed to persist agent to Edge Config:", e);
+  }
+
   return NextResponse.json({
     agentId,
     name,
     spawnPosition,
-    // No SSE stream — agent runs as a mock simulation on the game page
     streamUrl: null,
   }, { status: 201 });
 }

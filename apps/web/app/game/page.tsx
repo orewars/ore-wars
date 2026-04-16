@@ -113,26 +113,29 @@ function saveMockAgents(list: Agent[]) {
   } catch {}
 }
 
-function loadRealAgents(): Agent[] {
-  type Stored = { agentId: string; name: string; position: { x: number; y: number }; ethMined: number; rocksMined: number; deployedAt?: number };
+function parseRealAgents(stored: Array<{agentId: string; name: string; position: {x:number;y:number}; ethMined: number; rocksMined: number; deployedAt?: number}>, offset = 0): Agent[] {
+  return stored.map((a, i) => ({
+    agentId: a.agentId,
+    name: a.name,
+    color: (8 + ((i + offset) % 8)) % AGENT_COLORS.length,
+    position: a.position ? {...a.position} : { x: 16, y: 16 },
+    ethMined: a.ethMined ?? 0,
+    rocksMined: a.rocksMined ?? 0,
+    energy: 100,
+    tickOffset: Math.floor(Math.random() * 10),
+    strategy: "balanced" as const,
+    isMock: false,
+  }));
+}
+
+function loadRealAgentsLocal(): Agent[] {
   try {
     const raw = localStorage.getItem("orewars_real_agents");
     if (!raw) return [];
     const now = Date.now();
-    const stored: Stored[] = JSON.parse(raw);
-    const active = stored.filter(a => !a.deployedAt || now - a.deployedAt < 24 * 60 * 60 * 1000);
-    return active.map((a, i) => ({
-      agentId: a.agentId,
-      name: a.name,
-      color: (8 + i) % AGENT_COLORS.length, // colors 8–15 reserved for real agents
-      position: a.position ? {...a.position} : { x: 16, y: 16 },
-      ethMined: a.ethMined ?? 0,
-      rocksMined: a.rocksMined ?? 0,
-      energy: 100,
-      tickOffset: Math.floor(Math.random() * 10),
-      strategy: "balanced" as const,
-      isMock: false,
-    }));
+    const stored = JSON.parse(raw);
+    const active = stored.filter((a: {deployedAt?: number}) => !a.deployedAt || now - a.deployedAt < 24 * 60 * 60 * 1000);
+    return parseRealAgents(active);
   } catch {}
   return [];
 }
@@ -211,9 +214,8 @@ export default function GamePage() {
   useEffect(() => {
     const map = mapData.current;
     const mock = loadMockAgents();
-    const real = loadRealAgents();
-
-    // Merge — real agents override any mock that shares position
+    // Start with local agents immediately, server agents injected via sync loop
+    const real = loadRealAgentsLocal();
     const all = [...mock, ...real];
     agents.current = all;
 
@@ -343,32 +345,51 @@ export default function GamePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Sync real agents into simulation when localStorage changes ─────────────
+  // ── Sync real agents from server (Edge Config) every 10s ──────────────────
   useEffect(() => {
-    const sync = () => {
-      const real = loadRealAgents();
-      if (real.length === 0) return;
-      const current = agents.current;
-      const pm = posMap.current;
+    const syncFromServer = async () => {
+      try {
+        const res = await fetch("/api/agents", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverAgents: Array<{agentId:string;name:string;position:{x:number;y:number};ethMined:number;rocksMined:number;deployedAt?:number}> = data.agents ?? [];
+        if (serverAgents.length === 0) return;
 
-      for (const ra of real) {
-        const idx = current.findIndex(a => a.agentId === ra.agentId);
-        if (idx === -1) {
-          // New real agent — add to sim
-          const i = current.length;
-          pm.set(`${ra.position.x},${ra.position.y}`, i);
-          current.push(ra);
-          setAgentNames(current.map(a => ({ name: a.name, color: AGENT_COLORS[a.color] })));
-          pushLog({ time: formatTime(Date.now()), text: `${ra.name}  joined the game at (${ra.position.x},${ra.position.y})`, isOre: false });
-        } else {
-          // Update stats only — don't override position (sim owns movement now)
-          current[idx].ethMined = Math.max(current[idx].ethMined, ra.ethMined);
+        const current = agents.current;
+        const pm = posMap.current;
+        let changed = false;
+
+        const parsed = parseRealAgents(serverAgents);
+        for (const ra of parsed) {
+          const idx = current.findIndex(a => a.agentId === ra.agentId);
+          if (idx === -1) {
+            // New agent from server — inject into sim
+            const i = current.length;
+            // Ensure spawn position not occupied
+            let pos = ra.position;
+            if (pm.has(`${pos.x},${pos.y}`)) {
+              // Find free nearby tile
+              for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) {
+                const nx = Math.max(0, Math.min(SIZE-1, pos.x+dx));
+                const ny = Math.max(0, Math.min(SIZE-1, pos.y+dy));
+                if (!pm.has(`${nx},${ny}`)) { pos = {x:nx,y:ny}; break; }
+              }
+            }
+            ra.position = pos;
+            pm.set(`${pos.x},${pos.y}`, i);
+            current.push(ra);
+            changed = true;
+            pushLog({ time: formatTime(Date.now()), text: `${ra.name}  joined the game at (${pos.x},${pos.y})`, isOre: false });
+          }
+          // Don't override position — sim owns movement
         }
-      }
+
+        if (changed) setAgentNames(current.map(a => ({ name: a.name, color: AGENT_COLORS[a.color] })));
+      } catch {}
     };
 
-    sync();
-    const interval = setInterval(sync, 3000);
+    syncFromServer();
+    const interval = setInterval(syncFromServer, 10000);
     return () => clearInterval(interval);
   }, [pushLog]);
 
