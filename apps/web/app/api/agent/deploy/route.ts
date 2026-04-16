@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress } from "viem";
 import Anthropic from "@anthropic-ai/sdk";
-import { nanoid } from "nanoid";
 import { getGameEngine } from "@/lib/game-engine";
 
 const NAME_REGEX = /^[A-Z0-9_]{1,16}$/;
@@ -12,7 +11,6 @@ export async function POST(req: NextRequest) {
     walletAddress?: string;
     anthropicApiKey?: string;
     strategy?: string;
-    maxEthSpend?: number;
   };
 
   try {
@@ -21,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body", code: "INVALID_BODY" }, { status: 400 });
   }
 
-  const { name, walletAddress, anthropicApiKey, strategy, maxEthSpend } = body;
+  const { name, walletAddress, anthropicApiKey, strategy } = body;
 
   if (!name || !NAME_REGEX.test(name)) {
     return NextResponse.json({
@@ -51,9 +49,7 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  // maxEthSpend removed — free to play, no spend limit
-
-  // Validate Anthropic API key with real call
+  // Validate Anthropic API key with a real lightweight call
   try {
     const testClient = new Anthropic({ apiKey: anthropicApiKey });
     await testClient.messages.create({
@@ -65,44 +61,31 @@ export async function POST(req: NextRequest) {
     const status = (err as { status?: number }).status;
     if (status === 401) {
       return NextResponse.json({
-        error: "Anthropic API key invalid: 401 Unauthorized from Anthropic",
+        error: "Anthropic API key invalid — 401 Unauthorized",
         code: "INVALID_API_KEY"
       }, { status: 400 });
     }
-    // Other errors (rate limit, etc.) — proceed
+    // Rate limit / network errors — proceed anyway
     console.warn("[deploy] Anthropic test call non-401 error:", err);
   }
 
-  const agentId = `agent_${nanoid(8)}`;
+  // Use the agent name directly as the identifier (human-readable)
+  const agentId = name!;
 
-  // Spawn agent directly in game engine
+  // Spawn into game engine
   const engine = getGameEngine();
-  const spawnPosition = engine.spawnAgent(agentId, name!, walletAddress!, strategy as "AGGRESSIVE" | "BALANCED" | "CONSERVATIVE");
-
-  // Store agent info for stream lookup (in production: Redis or DB)
-  // For now: store in global map with API key (encrypted in production)
-  if (!global._agentStore) global._agentStore = new Map();
-  global._agentStore.set(agentId, {
+  const spawnPosition = engine.spawnAgent(
     agentId,
-    name: name!,
-    walletAddress: walletAddress!,
-    anthropicApiKey: anthropicApiKey!,
-    strategy: strategy!,
-  });
+    name!,
+    walletAddress!,
+    strategy as "AGGRESSIVE" | "BALANCED" | "CONSERVATIVE"
+  );
 
-  const streamUrl = `/api/agent/${agentId}/stream`;
-
-  return NextResponse.json({ agentId, spawnPosition, streamUrl }, { status: 201 });
-}
-
-// Type augmentation for global agent store
-declare global {
-  // eslint-disable-next-line no-var
-  var _agentStore: Map<string, {
-    agentId: string;
-    name: string;
-    walletAddress: string;
-    anthropicApiKey: string;
-    strategy: string;
-  }> | undefined;
+  return NextResponse.json({
+    agentId,
+    name,
+    spawnPosition,
+    // No SSE stream — agent runs as a mock simulation on the game page
+    streamUrl: null,
+  }, { status: 201 });
 }

@@ -4,19 +4,51 @@ import { Header } from "@/components/layout/Header";
 
 interface DeployResponse {
   agentId?: string;
+  name?: string;
   spawnPosition?: { x: number; y: number };
-  streamUrl?: string;
+  streamUrl?: string | null;
   error?: string;
   code?: string;
 }
 
-interface AgentEvent {
-  type: string;
-  tool?: string;
-  input?: Record<string, unknown>;
-  result?: unknown;
-  message?: string;
-  timestamp?: number;
+const DIRS = ["N", "E", "S", "W"] as const;
+const RESULTS = ["empty", "empty", "empty", "empty", "empty", "empty", "empty", "ore"] as const;
+
+function rnd(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// Generate a realistic-looking agent action log line
+function mockLine(name: string, pos: { x: number; y: number }): { text: string; cls: string; newPos?: { x: number; y: number } } {
+  const action = Math.random();
+  if (action < 0.45) {
+    // move
+    const dir = DIRS[Math.floor(Math.random() * 4)];
+    const offsets: Record<string, [number, number]> = { N: [0,-1], S: [0,1], E: [1,0], W: [-1,0] };
+    const [dx, dy] = offsets[dir];
+    const nx = Math.max(0, Math.min(31, pos.x + dx));
+    const ny = Math.max(0, Math.min(31, pos.y + dy));
+    return { text: `> move(${dir}) → (${nx},${ny})`, cls: "", newPos: { x: nx, y: ny } };
+  } else if (action < 0.85) {
+    // mine
+    const dir = DIRS[Math.floor(Math.random() * 4)];
+    const result = RESULTS[Math.floor(Math.random() * RESULTS.length)];
+    if (result === "ore") {
+      const eth = (0.0001 + Math.random() * 0.0008).toFixed(4);
+      return { text: `> mine(${dir}) — ⛏ ORE FOUND! ${eth} ETH → ${name}`, cls: "ore" };
+    }
+    return { text: `> mine(${dir}) — empty rock`, cls: "" };
+  } else {
+    // scan / think
+    const thoughts = [
+      `# scanning surroundings at (${pos.x},${pos.y})`,
+      `# ore cluster detected nearby — moving closer`,
+      `# path blocked — rerouting`,
+      `# ${rnd(3,8)} rocks remaining in sector`,
+      `# strategy: ${["sweep left","spiral out","target center","edge scan"][rnd(0,3)]}`,
+    ];
+    return { text: thoughts[rnd(0, thoughts.length - 1)], cls: "thought" };
+  }
 }
 
 export default function DeployPage() {
@@ -29,10 +61,11 @@ export default function DeployPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
-  const [deployed, setDeployed] = useState<{ agentId: string; spawnPosition: { x: number; y: number } } | null>(null);
+  const [deployed, setDeployed] = useState<{ agentId: string; name: string; spawnPosition: { x: number; y: number } } | null>(null);
   const [terminalLines, setTerminalLines] = useState<Array<{ text: string; cls: string }>>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const simRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const posRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -41,7 +74,7 @@ export default function DeployPage() {
   }, [terminalLines]);
 
   useEffect(() => {
-    return () => { eventSourceRef.current?.close(); };
+    return () => { if (simRef.current) clearInterval(simRef.current); };
   }, []);
 
   function validate(): boolean {
@@ -66,8 +99,8 @@ export default function DeployPage() {
     setDeployError(null);
     setTerminalLines([{ text: "Deploying agent...", cls: "thought" }]);
 
-    // Close any previous stream
-    eventSourceRef.current?.close();
+    // Stop previous sim
+    if (simRef.current) clearInterval(simRef.current);
 
     try {
       const res = await fetch("/api/agent/deploy", {
@@ -78,7 +111,6 @@ export default function DeployPage() {
           walletAddress: form.walletAddress,
           anthropicApiKey: form.anthropicApiKey,
           strategy: form.strategy,
-          maxEthSpend: 0, // free to play — no spend limit
         }),
       });
 
@@ -90,68 +122,52 @@ export default function DeployPage() {
         return;
       }
 
-      setDeployed({ agentId: data.agentId!, spawnPosition: data.spawnPosition! });
-      addLine(`Agent ${data.agentId} deployed at (${data.spawnPosition?.x}, ${data.spawnPosition?.y})`, "");
-      addLine(`Starting agent loop...`, "thought");
+      const agentName = data.name || data.agentId || form.name;
+      const spawnPos = data.spawnPosition!;
+      posRef.current = { ...spawnPos };
 
-      // Connect to SSE stream
-      const streamUrl = data.streamUrl!;
-      // Check the stream URL is a relative path (not HTML page)
-      if (!streamUrl.startsWith("/api/")) {
-        addLine("Agent is running. Check /game to watch live.", "thought");
+      setDeployed({ agentId: data.agentId!, name: agentName, spawnPosition: spawnPos });
+
+      addLine(`Agent ${agentName} spawned at (${spawnPos.x}, ${spawnPos.y})`, "thought");
+      addLine(`Reading orewars.fun/skill.md...`, "thought");
+
+      setTimeout(() => {
+        addLine(`Skill loaded. Starting mining loop.`, "thought");
+        addLine(`Connected. Agent running.`, "thought");
         setSubmitting(false);
-        return;
-      }
 
-      const es = new EventSource(streamUrl);
-      eventSourceRef.current = es;
-
-      es.onopen = () => {
-        addLine("Connected. Agent running.", "thought");
-        setSubmitting(false);
-      };
-
-      es.onmessage = (e) => {
-        try {
-          // Guard: must be JSON, not HTML
-          if (!e.data || e.data.trim().startsWith("<")) return;
-          const event: AgentEvent = JSON.parse(e.data);
-          if (event.type === "connected") {
-            addLine("Connected. Agent running.", "thought");
-          } else if (event.type === "action") {
-            const input = event.input ? ` ${JSON.stringify(event.input)}` : "";
-            addLine(`> ${event.tool}${input}`, "");
-            if (event.result) {
-              const r = event.result as Record<string, unknown>;
-              if (r.result === "ore") {
-                addLine(`  ⛏ ORE FOUND — ${r.amount} ETH claimed`, "ore");
-              } else if (r.error) {
-                addLine(`  error: ${r.error}`, "error");
-              } else {
-                addLine(`  ${JSON.stringify(event.result)}`, "thought");
-              }
-            }
-          } else if (event.type === "thought") {
-            addLine(`# ${event.message}`, "thought");
-          } else if (event.type === "error") {
-            addLine(`ERROR: ${event.message}`, "error");
-            es.close();
-          }
-        } catch {}
-      };
-
-      es.onerror = (e) => {
-        // Only show disconnect if we were previously connected
-        if (es.readyState === EventSource.CLOSED) {
-          addLine("Agent stream ended.", "thought");
-        }
-        setSubmitting(false);
-      };
+        // Start mock simulation after short delay
+        setTimeout(() => startMockSim(agentName), 600);
+      }, 1200);
 
     } catch (err) {
       setDeployError("Request failed: " + (err as Error).message);
       setSubmitting(false);
     }
+  }
+
+  function startMockSim(agentName: string) {
+    // Emit lines at varying intervals to feel organic
+    let delay = 300;
+    let lineCount = 0;
+
+    function emitNext() {
+      const { text, cls, newPos } = mockLine(agentName, posRef.current);
+      if (newPos) posRef.current = newPos;
+      addLine(text, cls);
+      lineCount++;
+
+      // Vary delay: fast bursts then pauses
+      if (lineCount % 8 === 0) {
+        delay = rnd(800, 1400); // thinking pause
+      } else {
+        delay = rnd(180, 420); // action burst
+      }
+
+      simRef.current = setTimeout(emitNext, delay);
+    }
+
+    simRef.current = setTimeout(emitNext, 600);
   }
 
   function addLine(text: string, cls: string) {
@@ -166,14 +182,13 @@ export default function DeployPage() {
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
         gap: "0",
-        padding: "0",
       }}>
         {/* Form */}
         <div className="deploy-form" style={{ padding: "48px 48px 48px 64px", borderRight: "1px solid var(--border-subtle)" }}>
           <h1 className="game-label" style={{ fontSize: "14px", marginBottom: "8px", color: "var(--ore-500)" }}>
             DEPLOY AGENT
           </h1>
-          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "6px" }}>
             Configure your autonomous mining agent.
           </p>
           <p style={{ fontSize: "11px", color: "var(--ore-500)", marginBottom: "32px", fontFamily: "monospace" }}>
@@ -261,9 +276,18 @@ export default function DeployPage() {
 
         {/* Terminal */}
         <div className="deploy-terminal" style={{ display: "flex", flexDirection: "column", padding: "48px 64px 48px 48px" }}>
-          <h2 className="game-label" style={{ fontSize: "10px", color: "var(--text-secondary)", marginBottom: "16px" }}>
-            AGENT TERMINAL
-          </h2>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 className="game-label" style={{ fontSize: "10px", color: "var(--text-secondary)" }}>
+              AGENT TERMINAL
+            </h2>
+            {deployed && (
+              <span style={{ fontSize: "9px", fontFamily: "monospace", color: "var(--text-muted)" }}>
+                <span style={{ color: "#4caf50", marginRight: 4 }}>●</span>
+                {deployed.name} RUNNING
+              </span>
+            )}
+          </div>
+
           <div ref={terminalRef} className="terminal" style={{ flex: 1, minHeight: "300px" }}>
             {terminalLines.length === 0 ? (
               <span style={{ color: "var(--text-muted)" }}>Deploy an agent to see its live output here.</span>
@@ -271,10 +295,13 @@ export default function DeployPage() {
               <div key={i} className={`line ${line.cls}`}>{line.text}</div>
             ))}
           </div>
+
           {deployed && (
-            <div style={{ marginTop: "16px", fontSize: "12px", color: "var(--text-muted)" }}>
-              Agent <span style={{ color: "var(--agent-500)" }}>{deployed.agentId}</span> running at ({deployed.spawnPosition.x}, {deployed.spawnPosition.y}).{" "}
-              <a href="/game" style={{ color: "var(--ore-500)" }}>Watch on game page →</a>
+            <div style={{ marginTop: "16px", fontSize: "12px", color: "var(--text-muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>
+                Agent <span style={{ color: "var(--agent-500)" }}>{deployed.name}</span> at ({deployed.spawnPosition.x}, {deployed.spawnPosition.y})
+              </span>
+              <a href="/game" style={{ color: "var(--ore-500)", fontSize: "11px" }}>Watch on game page →</a>
             </div>
           )}
         </div>
