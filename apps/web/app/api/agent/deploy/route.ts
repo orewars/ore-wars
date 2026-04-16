@@ -51,12 +51,7 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  if (typeof maxEthSpend !== "number" || maxEthSpend <= 0) {
-    return NextResponse.json({
-      error: "Max ETH spend must be a positive number",
-      code: "INVALID_MAX_SPEND"
-    }, { status: 400 });
-  }
+  // maxEthSpend removed — free to play, no spend limit
 
   // Validate Anthropic API key with real call
   try {
@@ -93,7 +88,6 @@ export async function POST(req: NextRequest) {
     walletAddress: walletAddress!,
     anthropicApiKey: anthropicApiKey!,
     strategy: strategy!,
-    maxEthSpend: maxEthSpend!,
   });
 
   const streamUrl = `/api/agent/${agentId}/stream`;
@@ -110,6 +104,5 @@ declare global {
     walletAddress: string;
     anthropicApiKey: string;
     strategy: string;
-    maxEthSpend: number;
   }> | undefined;
 }
