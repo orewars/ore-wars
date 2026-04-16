@@ -541,7 +541,7 @@ function MiniMap({
   mockAgents,
   realAgents,
 }: {
-  mapData: React.MutableRefObject<MapTile[]>;
+  mapData: React.MutableRefObject<MapTile[][]>;
   mockAgents: React.MutableRefObject<MockAgent[]>;
   realAgents: React.MutableRefObject<RealAgent[]>;
 }) {
