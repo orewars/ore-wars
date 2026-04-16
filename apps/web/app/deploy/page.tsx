@@ -12,7 +12,8 @@ interface DeployResponse {
 }
 
 const DIRS = ["N", "E", "S", "W"] as const;
-const RESULTS = ["empty", "empty", "empty", "empty", "empty", "empty", "empty", "ore"] as const;
+// 1% ore chance: 99 empty, 1 ore
+const RESULTS = Array.from({ length: 100 }, (_, i) => i === 0 ? "ore" : "empty") as string[];
 
 function rnd(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -128,6 +129,23 @@ export default function DeployPage() {
 
       setDeployed({ agentId: data.agentId!, name: agentName, spawnPosition: spawnPos });
 
+      // ── Persist to localStorage so game page can display this real agent ──
+      try {
+        const stored = JSON.parse(localStorage.getItem("orewars_real_agents") || "[]");
+        // Remove any previous entry with same name
+        const filtered = stored.filter((a: {name: string}) => a.name !== agentName);
+        filtered.push({
+          agentId: agentName,
+          name: agentName,
+          position: spawnPos,
+          status: "ACTIVE",
+          ethMined: 0,
+          rocksMined: 0,
+          deployedAt: Date.now(),
+        });
+        localStorage.setItem("orewars_real_agents", JSON.stringify(filtered.slice(-10)));
+      } catch {}
+
       addLine(`Agent ${agentName} spawned at (${spawnPos.x}, ${spawnPos.y})`, "thought");
       addLine(`Reading orewars.fun/skill.md...`, "thought");
 
@@ -147,23 +165,36 @@ export default function DeployPage() {
   }
 
   function startMockSim(agentName: string) {
-    // Emit lines at varying intervals to feel organic
     let delay = 300;
     let lineCount = 0;
 
     function emitNext() {
       const { text, cls, newPos } = mockLine(agentName, posRef.current);
-      if (newPos) posRef.current = newPos;
+      if (newPos) {
+        posRef.current = newPos;
+        // Update position in localStorage so game page shows correct location
+        try {
+          const stored = JSON.parse(localStorage.getItem("orewars_real_agents") || "[]");
+          const idx = stored.findIndex((a: {name: string}) => a.name === agentName);
+          if (idx !== -1) {
+            stored[idx].position = newPos;
+            if (text.includes("ORE FOUND")) {
+              const match = text.match(/([\d.]+) ETH/);
+              if (match) stored[idx].ethMined = (stored[idx].ethMined || 0) + parseFloat(match[1]);
+            }
+            stored[idx].rocksMined = (stored[idx].rocksMined || 0) + 1;
+            localStorage.setItem("orewars_real_agents", JSON.stringify(stored));
+          }
+        } catch {}
+      }
       addLine(text, cls);
       lineCount++;
 
-      // Vary delay: fast bursts then pauses
       if (lineCount % 8 === 0) {
-        delay = rnd(800, 1400); // thinking pause
+        delay = rnd(800, 1400);
       } else {
-        delay = rnd(180, 420); // action burst
+        delay = rnd(180, 420);
       }
-
       simRef.current = setTimeout(emitNext, delay);
     }
 

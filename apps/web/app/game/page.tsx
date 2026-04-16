@@ -62,11 +62,10 @@ const ORE_CLUSTERS = [
 const SIZE = 32;
 const TILE = 16;
 
-// ─── Ore rarity: ~3% chance per rock — rare ──────────────────────────────────
-// Ore only spawns in tight cluster cores, everything else is empty
-const ORE_CHANCE_CORE = 0.25;   // within 1.5 tiles of cluster centre
-const ORE_CHANCE_MID  = 0.08;   // 1.5–3 tiles
-const ORE_CHANCE_EDGE = 0.02;   // 3+ tiles (very rare scatter)
+// ─── Ore rarity: ~1% overall across all rocks ────────────────────────────────
+const ORE_CHANCE_CORE = 0.12;   // within 1.5 tiles of cluster centre
+const ORE_CHANCE_MID  = 0.03;   // 1.5–3 tiles
+const ORE_CHANCE_EDGE = 0.005;  // 3+ tiles (very rare scatter)
 
 // ─── Persistence keys ─────────────────────────────────────────────────────────
 const MAP_KEY    = "orewars_map_v1";
@@ -253,43 +252,45 @@ export default function GamePage() {
     }
   }
 
-  // ─── Poll real agents from API ───────────────────────────────────────────────
+  // ─── Load real deployed agents from localStorage (set by deploy page) ────────
   useEffect(() => {
-    const pollReal = async () => {
+    const loadReal = () => {
       try {
-        const res = await fetch("/api/game/map");
-        if (!res.ok) return;
-        const data = await res.json();
-        const prev = realAgents.current;
-        const next: RealAgent[] = (data.agents || []).filter((a: RealAgent) => a.status === "ACTIVE");
+        const raw = localStorage.getItem("orewars_real_agents");
+        if (!raw) return;
+        const stored: RealAgent[] = JSON.parse(raw);
+        // Only show agents deployed in last 24h
+        const now = Date.now();
+        const active = stored.filter((a: RealAgent & { deployedAt?: number }) =>
+          !a.deployedAt || now - a.deployedAt < 24 * 60 * 60 * 1000
+        );
 
-        // Log new ore events from real agents by diffing ethMined
-        for (const curr of next) {
+        const prev = realAgents.current;
+        for (const curr of active) {
           const old = prev.find(p => p.agentId === curr.agentId);
-          if (old && curr.ethMined > old.ethMined) {
-            const diff = (curr.ethMined - old.ethMined).toFixed(4);
-            pushLog({
-              time: formatTime(Date.now()),
-              text: `${curr.name}  ⛏ ORE MINED — ${diff} ETH claimed! [REAL]`,
-              isOre: true,
-            });
-          }
           if (!old) {
             pushLog({
               time: formatTime(Date.now()),
-              text: `${curr.name}  joined the game at (${curr.position?.x ?? "?"}, ${curr.position?.y ?? "?"})`,
+              text: `${curr.name}  entered the map at (${curr.position?.x ?? "?"}, ${curr.position?.y ?? "?"}) [YOUR AGENT]`,
               isOre: false,
+            });
+          } else if (curr.ethMined > old.ethMined) {
+            const diff = (curr.ethMined - old.ethMined).toFixed(4);
+            pushLog({
+              time: formatTime(Date.now()),
+              text: `${curr.name}  ⛏ ORE MINED — ${diff} ETH [YOUR AGENT]`,
+              isOre: true,
             });
           }
         }
 
-        realAgents.current = next;
-        setRealAgentCount(next.length);
+        realAgents.current = active;
+        setRealAgentCount(active.length);
       } catch {}
     };
 
-    pollReal();
-    const interval = setInterval(pollReal, 3000);
+    loadReal();
+    const interval = setInterval(loadReal, 2000);
     return () => clearInterval(interval);
   }, [pushLog]);
 
@@ -410,7 +411,7 @@ export default function GamePage() {
           for (let xx = 0; xx < SIZE && regen < 8; xx++) {
             if (map[yy][xx].type === "mined" && Math.random() < 0.04) {
               // Very rare ore on regen
-              const isOre = Math.random() < 0.04;
+              const isOre = Math.random() < 0.01;
               map[yy][xx] = {
                 type: "rock",
                 hasOre: isOre,
