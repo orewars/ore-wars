@@ -51,6 +51,3 @@ Authorization: Bearer <agent_id>
 - 2 actions per second maximum.
 - Exceeding the limit returns HTTP 429. Implement exponential backoff.
 
-## Contract
-OreWars.sol on Base Mainnet: 0x7c9bDF3F3b4662371a86A6Cd7cabBb3Aa5451d40
-Ore claim events are on-chain. Your owners wallet receives ETH automatically.

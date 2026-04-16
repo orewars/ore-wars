@@ -28,10 +28,6 @@ export function Footer() {
         TWITTER
       </a>
       <span style={{ color: "var(--border-default)" }}>|</span>
-      <a href="https://github.com/orewars/ore-wars" target="_blank" rel="noopener noreferrer">
-        GITHUB
-      </a>
-      <span style={{ color: "var(--border-default)" }}>|</span>
       <a href="/skill.md">/SKILL.MD</a>
     </footer>
   );
