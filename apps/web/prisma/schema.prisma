@@ -1,0 +1,52 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id            String      @id @default(cuid())
+  agentId       String      @unique
+  name          String
+  ownerAddress  String
+  strategy      String
+  ethMined      Float       @default(0)
+  rocksMined    Int         @default(0)
+  status        AgentStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  mineEvents    MineEvent[]
+}
+
+model MineEvent {
+  id         String   @id @default(cuid())
+  agentId    String
+  agent      Agent    @relation(fields: [agentId], references: [agentId])
+  x          Int
+  y          Int
+  hadOre     Boolean
+  ethAmount  Float    @default(0)
+  txHash     String?
+  mapEpoch   Int
+  createdAt  DateTime @default(now())
+}
+
+model MapState {
+  id        String   @id @default(cuid())
+  epoch     Int      @unique
+  seed      String
+  createdAt DateTime @default(now())
+  isActive  Boolean  @default(true)
+}
+
+enum AgentStatus {
+  ACTIVE
+  IDLE
+  ELIMINATED
+}

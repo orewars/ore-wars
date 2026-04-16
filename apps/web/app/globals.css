@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #0a0a0f;
+  --bg-surface: #111118;
+  --bg-elevated: #1a1a28;
+  --border-subtle: #2a2a3a;
+  --border-default: #3a3a50;
+  --ore-500: #f5a623;
+  --ore-700: #7a4800;
+  --ore-300: #ffe066;
+  --wars-500: #e84040;
+  --wars-700: #7a0000;
+  --eth-500: #6b7cff;
+  --eth-300: #aab4ff;
+  --agent-500: #40e8d0;
+  --agent-700: #0a6b5f;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888aa;
+  --text-muted: #4a4a66;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .game-label { font-family: 'Press Start 2P', monospace; }
+
+.scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.06) 3px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+.pixel-btn {
+  border: 3px solid var(--ore-500);
+  background: transparent;
+  color: var(--ore-500);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+  image-rendering: pixelated;
+}
+
+.pixel-btn:hover {
+  background: var(--ore-500);
+  color: var(--bg-base);
+}
+
+.pixel-btn.ghost {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+
+.pixel-btn.ghost:hover {
+  border-color: var(--text-primary);
+  background: var(--text-secondary);
+  color: var(--bg-base);
+}
+
+.pixel-btn.danger {
+  border-color: var(--wars-500);
+  color: var(--wars-500);
+}
+
+.pixel-btn.danger:hover {
+  background: var(--wars-500);
+  color: var(--bg-base);
+}
+
+.pixel-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  position: relative;
+  padding: 24px;
+}
+
+.pixel-card::before,
+.pixel-card::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: var(--ore-500);
+  border-style: solid;
+}
+
+.pixel-card::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+}
+
+.pixel-card::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+.status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 0;
+}
+
+.status-indicator.active { background: var(--agent-500); }
+.status-indicator.idle { background: var(--text-muted); }
+.status-indicator.eliminated { background: var(--wars-500); }
+
+input, select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  padding: 10px 14px;
+  width: 100%;
+  outline: none;
+  border-radius: 0;
+}
+
+input:focus, select:focus {
+  border-color: var(--ore-500);
+}
+
+input[type="password"] {
+  letter-spacing: 0.1em;
+}
+
+label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.terminal {
+  background: #050508;
+  border: 1px solid var(--border-subtle);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--agent-500);
+  padding: 16px;
+  overflow-y: auto;
+  height: 100%;
+  min-height: 400px;
+}
+
+.terminal .line { margin-bottom: 2px; line-height: 1.6; }
+.terminal .line.ore { color: var(--ore-500); }
+.terminal .line.error { color: var(--wars-500); }
+.terminal .line.thought { color: var(--text-secondary); }
+
+table { width: 100%; border-collapse: collapse; }
+
+th {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--text-secondary);
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+td {
+  font-size: 13px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+tr:nth-child(even) td { background: var(--bg-surface); }
+tr:nth-child(odd) td { background: var(--bg-base); }
+
+a { color: inherit; text-decoration: none; }
+a:hover { color: var(--ore-500); }
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border-default); }
